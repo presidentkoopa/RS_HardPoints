@@ -1,0 +1,58 @@
+addkeysection "RS HardPoints" RSHardPoints
+
+// The engine redirects grip to these keys, per hand, ONLY when the grip
+// arbiter resolves a clean tap (pressed and released, no other button joined
+// it) that started inside a hardpoint's radius (see DoomXR
+// vk_openxrdevice.cpp, HolsterClaim*/xrGripContext). Outside one, or during a
+// combo, grip keeps its normal meaning entirely -- these never fire. That is
+// why binding grip's holster role here does not steal grip from two-hand
+// stabilize or the secondary-button modifier layer.
+//
+// NO DEFAULT BINDS -- bind these yourself in Customize Controls. The engine
+// synthesises F13 (main) / F14 (off) for a holster-context grip, so those are
+// the keys to bind if you want grip to work.
+//
+// THE ALIAS NAME IS PRIVATE, THE NETEVENT IS SHARED, and that split is what
+// lets this pk3 load alongside RS_Holsters. A key binds to exactly ONE alias,
+// so if both mods bound F13 to their own alias the second one loaded would
+// silently win and the other would never see a grip press again. Both bind
+// their own alias (no KEYCONF collision) and both fire rs-vrhp-grab-*, which
+// every handler receives. Which mod actually acts needs no coordination: its
+// doSwap returns immediately unless the hand is inside one of ITS anchors,
+// and a hand is only ever in one place.
+addmenukey "Hardpoint: store/draw (MAIN hand)" rs_hardpoint_main
+alias rs_hardpoint_main "netevent rs-vrhp-grab-main"
+
+addmenukey "Hardpoint: store/draw (OFF hand)" rs_hardpoint_off
+alias rs_hardpoint_off "netevent rs-vrhp-grab-off"
+
+// Dumps head pose, both hand positions, every anchor's world position and
+// distance from each hand, and (if anything is stored) the exact orientation/
+// offset each item's model measured plus what got applied. This is the tool
+// for "nothing is happening" or "it's still wrong" -- it turns a silent
+// non-event, or an unexplained visual bug, into numbers.
+addmenukey "Hardpoint: debug dump" rs_hardpoint_debug
+alias rs_hardpoint_debug "netevent rs-hardpoint-debug"
+
+// Edit mode: drag the hardpoint spheres onto your actual arm, then dump the
+// numbers. Beats deriving offsets from proportion tables and hoping.
+addmenukey "Hardpoint: EDIT MODE toggle" rs_hardpoint_edit
+alias rs_hardpoint_edit "netevent rs-hardpoint-edit"
+
+addmenukey "Hardpoint: print tuned table" rs_hardpoint_table
+alias rs_hardpoint_table "netevent rs-hardpoint-table"
+
+addmenukey "Hardpoint: reset offsets" rs_hardpoint_reset
+alias rs_hardpoint_reset "netevent rs-hardpoint-reset"
+
+// The tuned layout, saved to disk. ONE slot, not the seated/standing pair
+// RS_Holsters has -- those mounts hang off a body, where a table tuned
+// standing does not fit a seated one; these are bolted to a tracked
+// controller, so posture is not a variable and two slots would be two names
+// for the same numbers. No default binds: setup-time actions, not something
+// you want a stray controller press triggering mid-game.
+addmenukey "Hardpoint: save tuned layout" rs_hardpoint_save_layout
+alias rs_hardpoint_save_layout "netevent rs-hardpoint-save-layout"
+
+addmenukey "Hardpoint: load tuned layout" rs_hardpoint_load_layout
+alias rs_hardpoint_load_layout "netevent rs-hardpoint-load-layout"

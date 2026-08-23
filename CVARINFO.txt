@@ -1,0 +1,85 @@
+// Show a model of the stored item at each hardpoint anchor.
+user bool rs_hardpoint_props = true;
+
+// Hardpoint prop appearance. Live-tunable because the right values are found
+// by looking at them in the headset, not by reasoning about model units.
+// A weapon's MODELDEF Scale is tuned for the HUD projection, so reusing it on
+// a world actor renders it enormous -- hence the shrink. Small by default: a
+// utility item on a wrist mount should read as compact gear, not as a full
+// holstered sidearm.
+user float rs_hardpoint_prop_scale_arm = 0.08;
+
+// Fraction of a hardpoint's own claim radius that a stored item's MEASURED
+// bounding radius (level.GetModelBoundsHint) gets scaled to fill, so a BFG
+// and a pistol read as "the same size in the ring" instead of both taking
+// the same flat multiplier regardless of how big either model actually is.
+// Only takes effect when the native finds real geometry to measure;
+// rs_hardpoint_prop_scale_arm above remains the exact fallback for anything
+// it can't measure. Under 1.0 on purpose -- an item that exactly touches the
+// marker's edge reads as clipping out of it, not as filling it.
+user float rs_hardpoint_prop_fill = 0.55;
+
+// Trim on top of each hardpoint's own pitch/roll (RS_HardPoints.zs,
+// GetHolster). Every weapon MODELDEF block that carries USEACTORPITCH/
+// USEACTORROLL honours these; without those flags the renderer ignores both
+// axes entirely, which is a property of that weapon's MODELDEF, not of this.
+user float rs_hardpoint_prop_pitch = 0.0;
+user float rs_hardpoint_prop_roll  = 0.0;
+
+// Centring trim, on top of the AUTOMATIC correction (level.GetModelOffsetHint,
+// read per-item in RS_HardPointProp.ShowWeapon). Residual only, not the whole
+// mechanism -- an item's baked MODELDEF Offset is measured and cancelled
+// automatically; these three exist for whatever that does not fully resolve.
+user float rs_hardpoint_prop_up   = 0.0;
+user float rs_hardpoint_prop_fwd  = 0.0;
+user float rs_hardpoint_prop_side = 0.0;
+
+// Yaw trim, plus the automatic mirror-flip and AngleOffset cancellation
+// (level.GetModelOrientationHint) applied ahead of it.
+user float rs_hardpoint_prop_yaw = 0.0;
+
+// The store/draw confirm sound (RS_HardPoints.zs doSwap).
+user bool rs_hardpoint_sound = true;
+
+// Which sound plays: 0 = rs_fx_holster, 1 = rs_allclear_ready. Both are
+// looked up by NAME, so whichever loaded weapon pack happens to define them
+// supplies them -- and GZDoom resolves an undefined sound to silence rather
+// than to an error, so neither is a hard dependency.
+user int rs_hardpoint_sound_style = 0;
+
+// Store/draw uses GZDoom's own CF_INSTANTWEAPSWITCH cheat flag (constants.zs),
+// set transiently around the MoveWeaponToHand call and restored right after
+// (RS_HardPoints.zs, moveWeaponInstant) -- so ordinary weapon switching (number
+// keys, the wheel) is untouched, only a hardpoint-triggered swap is instant.
+// Also what makes two-hand near-simultaneous store/draw work: with this on,
+// the whole lower-then-raise cycle resolves the same tic instead of over
+// ~16 tics, so there is no shared-PendingWeapon window for a second hand's
+// swap to collide with.
+user bool rs_hardpoint_instant_switch = true;
+
+// Marker look. Shape reads at SetHot's next re-check (immediate, since
+// SetHot's guard watches this cvar too -- RS_HardPointProp.zs). Color is a
+// class choice, not a field, so a change respawns the marker the next tic
+// (RS_HardPoints.zs updateProps) rather than tinting an existing one live.
+// 0 = bracket reticle, 1 = the original wireframe sphere.
+user int rs_hardpoint_marker_shape = 0;
+// Cold (idle) marker color. 0 = default (untinted), 1 = blue, 2 = red,
+// 3 = gold, 4 = purple, 5 = orange, 6 = green, 7 = cyan, 8 = pink.
+user int rs_hardpoint_marker_color = 0;
+// Hot (hand-in-range) marker color, same palette, independent cvar --
+// two states that look identical defeat the point of a color cue.
+user int rs_hardpoint_marker_color_hot = 0;
+
+// How many hardpoints are live (RS_HardPoints.zs, armActiveCount).
+// 0 = off, 3 = forearm only (Forearm1/2/3), 6 = forearm + wrist
+// (+ WristBelow/Knuckle/Joint). Snapped to the nearest of those three on
+// read, so any other value (a hand-edited ini, an old config) still
+// resolves to something sane rather than an in-between state nothing was
+// ever tuned for.
+//
+// Defaults to 3, NOT 0. This rig defaulted OFF back when it shipped inside
+// RS_Holsters next to 8 already-tuned torso holsters, where switching on
+// new unproven anchor math should never have been a side effect of
+// installing something else. Standalone it is the whole mod, and a default
+// of 0 would mean loading this pk3 and seeing nothing at all.
+user int rs_hardpoint_arm_active_count = 3;

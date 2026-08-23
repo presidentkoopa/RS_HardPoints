@@ -1,0 +1,100 @@
+// Hooked directly into the root options menu rather than nested under any
+// other mod's submenu -- this pk3's menu presence does not depend on any
+// other mod's menu structure. The hardpoints need SOME weapon pack loaded
+// to have anything to show, but never reference a specific one.
+OptionValue "RS_HardPointSoundStyle"
+{
+	0, "Holster clunk"
+	1, "Ready-to-fire beep"
+}
+
+OptionValue "RS_HardPointMarkerShape"
+{
+	0, "Bracket reticle"
+	1, "Wireframe sphere"
+}
+
+OptionValue "RS_HardPointMarkerColor"
+{
+	0, "Default"
+	1, "Blue"
+	2, "Red"
+	3, "Gold"
+	4, "Purple"
+	5, "Orange"
+	6, "Green"
+	7, "Cyan"
+	8, "Pink"
+}
+
+OptionValue "RS_HardPointArmActiveCount"
+{
+	0, "Off"
+	3, "3 -- Forearm"
+	6, "6 -- + Wrist"
+}
+
+AddOptionMenu "OptionsMenu"
+{
+	StaticText " "
+	Submenu "Arm Hardpoints", "RS_HardPointOptions"
+}
+
+// The off-hand-anchored forearm/wrist hardpoints. SafeCommand rather than
+// Command for the destructive/modal ones: edit mode and reset both change
+// state you would not want triggered by a misread controller press while
+// scrolling a menu in VR.
+OptionMenu "RS_HardPointOptions"
+{
+	Title "Arm Hardpoints"
+	StaticText " "
+
+	StaticText "Placement", "Gold"
+	Option "How many hardpoints", "rs_hardpoint_arm_active_count", "RS_HardPointArmActiveCount"
+	SafeCommand "Edit Mode -- grab spheres and move them", "netevent rs-hardpoint-edit"
+	SafeCommand "Print tuned table to console",            "netevent rs-hardpoint-table"
+	SafeCommand "Reset offsets to defaults",               "netevent rs-hardpoint-reset"
+	StaticText " "
+
+	// The CURRENT edit-table -- tune it with Edit Mode above, then save it,
+	// so the tuning survives a restart without a rebuild. Loading takes
+	// effect immediately. One slot only: RS_Holsters keeps a seated and a
+	// standing profile because its anchors hang off a body, and these are
+	// bolted to a tracked controller, where posture is not a variable.
+	StaticText "Saved Layout", "Gold"
+	SafeCommand "Save tuned layout", "netevent rs-hardpoint-save-layout"
+	SafeCommand "Load tuned layout", "netevent rs-hardpoint-load-layout"
+	StaticText " "
+
+	StaticText "Appearance", "Gold"
+	Option "Show hardpoint markers",    "rs_hardpoint_props", "OnOff"
+	Option "Marker shape",              "rs_hardpoint_marker_shape", "RS_HardPointMarkerShape"
+	Option "Marker color (cold)",       "rs_hardpoint_marker_color", "RS_HardPointMarkerColor"
+	Option "Marker color (hot)",        "rs_hardpoint_marker_color_hot", "RS_HardPointMarkerColor"
+	Slider "Hardpoint item size (fallback)", "rs_hardpoint_prop_scale_arm", 0.02, 0.5, 0.01, 2
+	Slider "Fill amount (measured models)",  "rs_hardpoint_prop_fill", 0.1, 1.0, 0.05, 2
+	Slider "Stored item yaw",           "rs_hardpoint_prop_yaw", -180.0, 180.0, 5.0, 0
+	Slider "Stored item pitch",         "rs_hardpoint_prop_pitch", -180.0, 180.0, 5.0, 0
+	Slider "Stored item roll",          "rs_hardpoint_prop_roll",  -180.0, 180.0, 5.0, 0
+	Slider "Stored item up/down",       "rs_hardpoint_prop_up",  -12.0, 12.0, 0.5, 1
+	Slider "Stored item fwd/back",      "rs_hardpoint_prop_fwd", -12.0, 12.0, 0.5, 1
+	Slider "Stored item side",          "rs_hardpoint_prop_side", -12.0, 12.0, 0.5, 1
+	StaticText " "
+
+	StaticText "Timing & Sound", "Gold"
+	Option "Instant store/draw",       "rs_hardpoint_instant_switch", "OnOff"
+	Option "Store/draw confirm sound", "rs_hardpoint_sound", "OnOff"
+	Option "Confirm sound style",      "rs_hardpoint_sound_style", "RS_HardPointSoundStyle"
+	StaticText " "
+
+	// ENGINE cvars (DoomXR), not this pk3's own -- referencing them here
+	// does not require this pk3 to own or declare them.
+	StaticText "Grip", "Gold"
+	Option "Grip works holsters",       "vr_holster_use_grip", "OnOff"
+	Option "Two handed weapons",        "vr_two_handed_weapons", "OnOff"
+	Slider "Stabilize distance (in)",   "vr_stabilize_distance_inches", 1.0, 24.0, 1.0, 0
+	StaticText " "
+
+	StaticText "Diagnostics", "Gold"
+	SafeCommand "Debug dump to console", "netevent rs-hardpoint-debug"
+}

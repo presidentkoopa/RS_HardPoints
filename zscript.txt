@@ -1,0 +1,27 @@
+version "4.14"
+
+// Arm-anchored hardpoints -- six mount points on the player's own off arm.
+// Split out of RS_Holsters (which keeps the 8 torso holsters); the two are
+// designed to load together, see README.md.
+//
+// REAL DEPENDENCIES, this pk3 is not standalone-playable without them:
+//   - SOME weapon-content pack must be loaded: RS_HardPointProp borrows a
+//     stored item's model via A_ChangeModel(w.GetClassName()), which resolves
+//     against THAT ITEM'S OWN MODELDEF block, wherever it lives. Not any
+//     specific mod. Store/draw/claim all work with no weapon pack loaded at
+//     all; only the visible model needs one, and it does not care which.
+//   - The engine (UZDXREMA/DoomXR) fields this drives are native, not stock
+//     GZDoom: OffhandPos/Angle/Pitch/Roll and the matching Attack* pair,
+//     HmdPos/HmdYaw/HmdPitch/HmdRoll, HolsterClaimMain/Off, GripContextMain/
+//     Off, VRTurnYaw, ReadyWeapon/OffhandWeapon and MoveWeaponToHand's
+//     dual-wield hand routing, and the natives level.VRHaptic /
+//     level.GetModelOrientationHint / level.GetModelOffsetHint /
+//     level.GetModelBoundsHint / level.GetModelWorldOffset /
+//     level.JSONProfile*. None of this runs on stock GZDoom or on QuestZDoom
+//     proper -- and none of it belongs to any weapon pack, it is all
+//     engine-level.
+//
+// RS_HardPointManager must ALSO be in MAPINFO.txt's AddEventHandlers (it is).
+
+#include "zscript/systems/player/RS_HardPointProp.zs"
+#include "zscript/systems/player/RS_HardPoints.zs"
