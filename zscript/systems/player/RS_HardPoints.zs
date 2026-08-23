@@ -357,7 +357,8 @@ class RS_HardPointManager : EventHandler
 			// all three wrist slots, so one prediction does not obviously
 			// hold the same way for all three -- read the numbers against
 			// the actual tilt rather than trusting a guess about the sign.
-			if (armActiveCount() > 3 && (level.time % 10) == 0)
+			int wristMode = armMode();
+			if ((wristMode == 2 || wristMode == 3) && (level.time % 10) == 0)
 			{
 				Vector3 belowP = anchorPos(i, pawn, 3);
 				Vector3 knuckP = anchorPos(i, pawn, 4);
@@ -1325,29 +1326,34 @@ class RS_HardPointManager : EventHandler
 		return idx >= HAND_HOLSTER_START;
 	}
 
-	// How many hardpoints are live: 0 off, 3 forearm only, 6 forearm +
-	// wrist -- matching the GetHolster index order exactly, so "active
-	// count N" always means "indices 0..N-1", no separate ordering table
-	// needed. Clamped and snapped to the nearest valid step rather than
-	// trusted raw, since this cvar can be hand-edited in an ini to any int.
+	// Which hardpoints are live: 0 off, 1 forearm only (0-2), 2 wrist only
+	// (3-5), 3 both (all six). A MODE, not a count -- the wrist trio can be
+	// enabled without the forearm, which a simple "first N indices" count
+	// could never express (wrist is 3-5, never the low end of the table).
+	// Clamped to a valid mode rather than trusted raw, since this cvar can
+	// be hand-edited in an ini to any int.
 	//
-	// Defaults to 3 rather than 0. In RS_Holsters, where this rig lived
-	// alongside 8 already-tuned torso holsters, OFF was right: turning on
-	// new unproven anchor math should never be a side effect of installing
-	// something else. Here it is the entire mod -- a default of 0 would
-	// mean loading this pk3 and seeing nothing at all.
-	private int armActiveCount() const
+	// Defaults to 1 (forearm only), not 0. In RS_Holsters, where this rig
+	// lived alongside 8 already-tuned torso holsters, OFF was right:
+	// turning on new unproven anchor math should never be a side effect of
+	// installing something else. Here it is the entire mod -- a default of
+	// 0 would mean loading this pk3 and seeing nothing at all.
+	private int armMode() const
 	{
 		let cv = CVar.GetCVar("rs_hardpoint_arm_active_count", players[consoleplayer]);
-		int n = (cv != null) ? cv.GetInt() : 3;
+		int n = (cv != null) ? cv.GetInt() : 1;
 		if (n <= 0) return 0;
-		if (n <= 3) return 3;
-		return 6;
+		if (n >= 3) return 3;
+		return n; // 1 or 2, already a valid mode
 	}
 
 	private bool holsterActive(int h) const
 	{
-		return h < armActiveCount();
+		int mode = armMode();
+		if (mode == 0) return false;
+		if (mode == 3) return true;
+		bool isWrist = (h >= FOREARM_HOLSTER_END);
+		return (mode == 2) ? isWrist : !isWrist; // 2 = wrist only, 1 = forearm only
 	}
 
 	private bool instantSwitchEnabled() const

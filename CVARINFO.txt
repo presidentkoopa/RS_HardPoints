@@ -70,16 +70,19 @@ user int rs_hardpoint_marker_color = 0;
 // two states that look identical defeat the point of a color cue.
 user int rs_hardpoint_marker_color_hot = 0;
 
-// How many hardpoints are live (RS_HardPoints.zs, armActiveCount).
-// 0 = off, 3 = forearm only (Forearm1/2/3), 6 = forearm + wrist
-// (+ WristBelow/Knuckle/Joint). Snapped to the nearest of those three on
-// read, so any other value (a hand-edited ini, an old config) still
-// resolves to something sane rather than an in-between state nothing was
-// ever tuned for.
+// Which hardpoints are live (RS_HardPoints.zs, armMode). A MODE, not a
+// count: 0 = off, 1 = forearm only (Forearm1/2/3), 2 = wrist only
+// (WristBelow/Knuckle/Joint), 3 = both, all six. Wrist-only has to be a
+// mode rather than a count, since the wrist trio is never the low end of
+// the anchor table -- "first N active" could never express it alone.
+// Clamped to a valid mode on read, so any other value (a hand-edited ini,
+// an old config from before this was a mode) still resolves to something
+// sane rather than an in-between state nothing was ever tuned for.
 //
-// Defaults to 3, NOT 0. This rig defaulted OFF back when it shipped inside
-// RS_Holsters next to 8 already-tuned torso holsters, where switching on
-// new unproven anchor math should never have been a side effect of
-// installing something else. Standalone it is the whole mod, and a default
-// of 0 would mean loading this pk3 and seeing nothing at all.
-user int rs_hardpoint_arm_active_count = 3;
+// Defaults to 1 (forearm only), NOT 0. This rig defaulted OFF back when
+// it shipped inside RS_Holsters next to 8 already-tuned torso holsters,
+// where switching on new unproven anchor math should never have been a
+// side effect of installing something else. Standalone it is the whole
+// mod, and a default of 0 would mean loading this pk3 and seeing nothing
+// at all.
+user int rs_hardpoint_arm_active_count = 1;

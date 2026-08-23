@@ -143,10 +143,14 @@ anything in this mod at all.
 anchors placed relative to a body; these are bolted to a tracked controller, so
 two slots would be two names for the same numbers. One `hardpoint_layout`.
 
-**`rs_hardpoint_arm_active_count` defaults to 3, not 0.** OFF was right when
-this rig sat beside 8 already-tuned torso holsters and switching on unproven
-anchor math should not have been a side effect of installing something else.
-Standalone it is the whole mod, and 0 would mean loading the pk3 and seeing
+**`rs_hardpoint_arm_active_count` is a MODE, not a count** (0 off, 1 forearm
+only, 2 wrist only, 3 both) -- `armMode()`/`holsterActive()`. Wrist-only has
+to be a mode: the wrist trio (3-5) is never the low end of the anchor table,
+so a simple "first N active" count could never express it alone. Defaults to
+1 (forearm only), not 0. OFF was right when this rig sat beside 8 already-tuned
+torso holsters and switching on unproven anchor math should not have been a
+side effect of installing something else. Standalone it is the whole mod, and 0
+would mean loading the pk3 and seeing
 nothing at all.
 
 Two visible actor classes, both in `RS_HardPointProp.zs`:
@@ -303,8 +307,11 @@ inventory -- `bNoAutoSwitchTo` is what stops that.
 ## Where to extend things
 
 - **A 7th hardpoint**: bump `HOLSTER_COUNT`, add a `GetHolster` case (the last
-  case is `default:`, so a new one goes above it), extend `armActiveCount()`'s
-  snap-to-tier logic and the `RS_HardPointArmActiveCount` `OptionValue` block.
+  case is `default:`, so a new one goes above it). If it belongs to neither
+  existing group, `holsterActive()`/`armMode()` need a real fourth group, not
+  just an index bump -- they currently only know forearm (below
+  `FOREARM_HOLSTER_END`) and wrist (at or above it). Also extend the
+  `RS_HardPointArmActiveCount` `OptionValue` block.
 - **Anything on the torso**: wrong repo -- that is `E:\RS_Holsters`.
 - **A new marker shape**: author a new unit-radius `.obj` (feature distance from
   origin = 1.0, so MODELDEF's `Scale 3.0 3.0 3.0` keeps mapping correctly), add
@@ -393,8 +400,9 @@ inventory -- `bNoAutoSwitchTo` is what stops that.
   `handBasisPose` here reads `OffhandPitch` **raw**. Through `handAnchorPos`'
   `fz = -sin(pit)` that would invert the vertical response of the wrist anchors
   (3-5; Forearm 0-2 force pitch to 0, so they never see it). A throttled console
-  dump is already wired in `WorldTick`, gated on `armActiveCount() > 3`: raw
-  pitch/roll/angle plus all three wrist anchor positions. **Deliberately not
+  dump is already wired in `WorldTick`, gated on `armMode()` being 2 (wrist
+  only) or 3 (all six): raw pitch/roll/angle plus all three wrist anchor
+  positions. **Deliberately not
   "fixed" blind** -- this file's rotation math has been hand-derived wrongly
   twice before, and the three wrist slots have different offsets so one
   prediction does not obviously hold for all three. Read the numbers against an

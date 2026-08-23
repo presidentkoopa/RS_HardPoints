@@ -30,8 +30,9 @@ OptionValue "RS_HardPointMarkerColor"
 OptionValue "RS_HardPointArmActiveCount"
 {
 	0, "Off"
-	3, "3 -- Forearm"
-	6, "6 -- + Wrist"
+	1, "Forearm only"
+	2, "Wrist only"
+	3, "All six"
 }
 
 AddOptionMenu "OptionsMenu"
@@ -50,7 +51,7 @@ OptionMenu "RS_HardPointOptions"
 	StaticText " "
 
 	StaticText "Placement", "Gold"
-	Option "How many hardpoints", "rs_hardpoint_arm_active_count", "RS_HardPointArmActiveCount"
+	Option "Which hardpoints", "rs_hardpoint_arm_active_count", "RS_HardPointArmActiveCount"
 	SafeCommand "Edit Mode -- grab spheres and move them", "netevent rs-hardpoint-edit"
 	SafeCommand "Print tuned table to console",            "netevent rs-hardpoint-table"
 	SafeCommand "Reset offsets to defaults",               "netevent rs-hardpoint-reset"
