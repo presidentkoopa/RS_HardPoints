@@ -290,6 +290,23 @@ class RS_HardPointManager : EventHandler
 	//     is the specific fix for "look down and shake, holsters go bananas".
 	double bodyYaw[MAXPLAYERS];
 	bool   bodyYawInit[MAXPLAYERS];
+
+	// GESTURE-CAST arming: off hand only, palm-out/open-palm pose (the wrist
+	// rolled away from a normal weapon grip). Roll only -- see
+	// updateGestureArm for why yaw/pitch/position play no part. Latched per
+	// player so the rising edge can get its own confirm haptic, the same
+	// "short tap on ENTER only" pattern updateClaims already uses for
+	// holster-range haptics.
+	bool gestureArmed[MAXPLAYERS];
+
+	// What the off hand held BEFORE the first gesture-fire of this armed
+	// stretch, null when nothing is currently gesture-seated. Captured once
+	// on the first fire after arming, not on every fire -- so firing HP1
+	// then HP2 then HP3 in the same armed stretch always restores the ONE
+	// real weapon you started with, not whatever the previous hardpoint
+	// press left seated. Restored (and cleared) the instant gestureArmed
+	// drops, in updateGestureArm -- see there.
+	Array<Weapon> gesturePreviousOff;
 	// Last seen controller-turn total, to difference against. Tracked rather
 	// than read absolutely because only the CHANGE should move the body.
 	double lastTurnYaw[MAXPLAYERS];
@@ -355,6 +372,10 @@ class RS_HardPointManager : EventHandler
 
 			updateBodyYaw(i, pawn);
 			updateGrabs(i, pawn);
+			// BEFORE updateClaims -- updateClaims' own HardpointClaimOff write
+			// ORs gestureArmed[i] in (see there), so the arm check has to have
+			// already run this tic.
+			updateGestureArm(i, pawn);
 			updateClaims(i, pawn); // also repositions props, via updateProps
 
 			// Throttled live dump of raw off-hand pitch plus the resulting
@@ -374,8 +395,9 @@ class RS_HardPointManager : EventHandler
 				Vector3 belowP = anchorPos(i, pawn, 3);
 				Vector3 knuckP = anchorPos(i, pawn, 4);
 				Vector3 jointP = anchorPos(i, pawn, 5);
-				Console.Printf("RS_HARDPOINT wrist-pitch: raw OffhandPitch=%.1f OffhandRoll=%.1f OffhandAngle=%.1f",
-					pawn.OffhandPitch, pawn.OffhandRoll, pawn.OffhandAngle);
+				Console.Printf("RS_HARDPOINT wrist-pitch: raw OffhandPitch=%.1f OffhandRoll=%.1f OffhandAngle=%.1f  gesture-armed=%d (target=%.1f tol=%.1f)",
+					pawn.OffhandPitch, pawn.OffhandRoll, pawn.OffhandAngle,
+					gestureArmed[i], gestureRollTarget(), gestureRollTolerance());
 				Console.Printf("  Below  %.1f,%.1f,%.1f   Knuckle %.1f,%.1f,%.1f   Joint %.1f,%.1f,%.1f",
 					belowP.X, belowP.Y, belowP.Z, knuckP.X, knuckP.Y, knuckP.Z, jointP.X, jointP.Y, jointP.Z);
 			}
@@ -905,6 +927,16 @@ class RS_HardPointManager : EventHandler
 			}
 		}
 
+		// GESTURE-CAST folds in here too: while armed, the off hand reads to
+		// the engine's grip arbiter exactly like a real proximity claim would
+		// (GRIPCTX_Hardpoint -> GRIPSUBJ_Holster -> rs_hands' POSE_REACH,
+		// same pipeline hardpointHere already drives for a physical reach --
+		// see that mod's rs_hands.zs, "case GRIPSUBJ_Holster: return
+		// POSE_REACH"). No new engine work needed: gesture-cast is off hand
+		// only, so only HardpointClaimOff gets the OR; a real proximity claim
+		// on the MAIN hand (reaching to store/draw) is untouched.
+		bool offClaimedFinal = offClaimed || gestureArmed[i];
+
 		// Edge-logged rather than per-tic: this is the signal that the whole
 		// chain works, and it should be visible without being a spam source.
 		if (mainClaimed != pawn.HardpointClaimMain)
@@ -914,10 +946,10 @@ class RS_HardPointManager : EventHandler
 			// your hand when you pull away from it, only when you find it.
 			if (mainClaimed) level.VRHaptic(0, 0.35, 25.0);
 		}
-		if (offClaimed != pawn.HardpointClaimOff)
+		if (offClaimedFinal != pawn.HardpointClaimOff)
 		{
-			Console.Printf("RS_HARDPOINT: off hand %s hardpoint range", offClaimed ? "ENTERED" : "left");
-			if (offClaimed) level.VRHaptic(1, 0.35, 25.0);
+			Console.Printf("RS_HARDPOINT: off hand %s hardpoint range", offClaimedFinal ? "ENTERED" : "left");
+			if (offClaimedFinal) level.VRHaptic(1, 0.35, 25.0);
 		}
 
 		// HardpointClaim, NOT HolsterClaim, and the change is not cosmetic.
@@ -933,7 +965,7 @@ class RS_HardPointManager : EventHandler
 		// in priority order -- holster, then hardpoint, then a grab, then the
 		// grip modifier, then stabilize.
 		pawn.HardpointClaimMain = mainClaimed;
-		pawn.HardpointClaimOff  = offClaimed;
+		pawn.HardpointClaimOff  = offClaimedFinal;
 
 		updateProps(i, pawn);
 	}
@@ -1073,19 +1105,42 @@ class RS_HardPointManager : EventHandler
 				// CLASS-level member (HOLSTER_COUNT, SWAP_COOLDOWN, etc.), never
 				// a local declared inside a method body, and there is no way to
 				// test-compile before this ships to find out the hard way.
-				double senseMult = 4.0;
-				double dMain = (pawn.AttackPos - at).Length();
-				double dOff  = (pawn.OffhandPos - at).Length();
-				// No bare Min()/Clamp() -- neither has any precedent as a
-				// builtin anywhere in this engine's own ZScript (only Max()
-				// does), and there is no way to test-compile before this
-				// ships, so plain comparisons it is.
-				double dNear = (dMain < dOff) ? dMain : dOff;
-				double senseRange = hsRadius * senseMult;
-				double norm = (senseRange > 0.0) ? (dNear / senseRange) : 1.0;
-				if (norm < 0.0) norm = 0.0;
-				if (norm > 1.0) norm = 1.0;
-				markers[pi].SetProximity(1.0 - norm);
+				//
+				// WRIST markers (3-5) get a DIFFERENT feed: GESTURE-CAST's
+				// "not-yet-armed" visual. Nothing reaches for these -- the
+				// off hand's own wrist rolls into position -- so hand
+				// DISTANCE has no meaning here; ROLL distance from the
+				// arming target does. Same shape (1.0 at the target, fading
+				// out, wider than the hard armed cutoff so it visibly
+				// notices the wrist approaching the pose, not just arriving).
+				double proxValue;
+				if (h >= FOREARM_HOLSTER_END)
+				{
+					double rollSenseMult = 3.0;
+					double rollDelta = abs(normalizeDeg(pawn.OffhandRoll - gestureRollTarget()));
+					double rollSenseRange = gestureRollTolerance() * rollSenseMult;
+					double rollNorm = (rollSenseRange > 0.0) ? (rollDelta / rollSenseRange) : 1.0;
+					if (rollNorm < 0.0) rollNorm = 0.0;
+					if (rollNorm > 1.0) rollNorm = 1.0;
+					proxValue = 1.0 - rollNorm;
+				}
+				else
+				{
+					double senseMult = 4.0;
+					double dMain = (pawn.AttackPos - at).Length();
+					double dOff  = (pawn.OffhandPos - at).Length();
+					// No bare Min()/Clamp() -- neither has any precedent as a
+					// builtin anywhere in this engine's own ZScript (only Max()
+					// does), and there is no way to test-compile before this
+					// ships, so plain comparisons it is.
+					double dNear = (dMain < dOff) ? dMain : dOff;
+					double senseRange = hsRadius * senseMult;
+					double norm = (senseRange > 0.0) ? (dNear / senseRange) : 1.0;
+					if (norm < 0.0) norm = 0.0;
+					if (norm > 1.0) norm = 1.0;
+					proxValue = 1.0 - norm;
+				}
+				markers[pi].SetProximity(proxValue);
 			}
 
 			// --- the stored weapon's model, when there is one ---
@@ -1394,6 +1449,69 @@ class RS_HardPointManager : EventHandler
 		return (cv != null) ? cv.GetBool() : true;
 	}
 
+	// GESTURE-CAST arming target/tolerance, degrees. Live-tunable rather than
+	// baked -- same reasoning as every other angle in this file: the right
+	// number is found by rolling the wrist in headset and reading raw
+	// OffhandRoll off the debug dump below, not by reasoning about it on
+	// paper. This codebase's rotation math has been hand-derived wrong twice
+	// before (see the wrist-pitch lead); this is the same shape of problem.
+	private double gestureRollTarget() const
+	{
+		let cv = CVar.GetCVar("rs_hardpoint_gesture_roll_target", players[consoleplayer]);
+		return (cv != null) ? cv.GetFloat() : 0.0;
+	}
+
+	private double gestureRollTolerance() const
+	{
+		let cv = CVar.GetCVar("rs_hardpoint_gesture_roll_tolerance", players[consoleplayer]);
+		return (cv != null) ? cv.GetFloat() : 30.0;
+	}
+
+	// Palm-out/open-palm arming check for GESTURE-CAST. OFF HAND ONLY --
+	// this is the off-arm's own trick, not something the main hand does (see
+	// the CLAUDE.md framing: one weapon held in the main hand, three mounted
+	// around the off hand). Roll alone, no position/extension test: there is
+	// no elbow tracking to check "is the arm actually outstretched" against
+	// (same gap the forearm anchors already work around), and no precondition
+	// on anything else the player is doing -- the owner was explicit that an
+	// earlier "shoot first, then arm" framing was just an example, not a
+	// requirement. Haptic fires on the rising edge only, mirroring
+	// updateClaims' own "short tap on ENTER only" pattern.
+	private void updateGestureArm(int i, PlayerPawn pawn)
+	{
+		bool wasArmed = gestureArmed[i];
+		double delta = normalizeDeg(pawn.OffhandRoll - gestureRollTarget());
+		bool nowArmed = abs(delta) <= gestureRollTolerance();
+
+		gestureArmed[i] = nowArmed;
+		if (nowArmed && !wasArmed)
+			level.VRHaptic(1, 0.35, 25.0);
+
+		// Falling edge: the hand rolled back out of the arming pose.
+		// Whatever gesture-fire last seated in the off hand (if anything --
+		// most armed stretches fire nothing at all) swaps back out HERE, on
+		// the tic arming actually ends, not on a same-tic pulse inside
+		// fireGesture -- see gesturePreviousOff's own field comment for why
+		// that matters (a same-tic swap-back risks tearing the Fire state's
+		// psprite down before its action functions ever actually run).
+		if (!nowArmed && wasArmed)
+		{
+			ensureGesturePreviousOff();
+			Weapon restore = gesturePreviousOff[i];
+			if (restore != null)
+			{
+				moveWeaponInstant(pawn, restore, 1);
+				gesturePreviousOff[i] = null;
+			}
+		}
+	}
+
+	private void ensureGesturePreviousOff()
+	{
+		while (gesturePreviousOff.Size() < MAXPLAYERS)
+			gesturePreviousOff.Push(null);
+	}
+
 	private int swapCooldown() const
 	{
 		return instantSwitchEnabled() ? FAST_SWAP_COOLDOWN : SLOW_SWAP_COOLDOWN;
@@ -1489,6 +1607,136 @@ class RS_HardPointManager : EventHandler
 			if (editMode) { toggleGrab(evt.player, false); }
 			else          { doSwap(evt.player, pawn, nearOff[evt.player], true); }
 		}
+
+		// GESTURE-CAST fire, one netevent per button, each hardcoded to the
+		// ONE wrist index the owner assigned it (2026-08-25): grip -> 3
+		// (WristBelow), pad/X -> 4 (WristKnuckle), trigger -> 5 (WristJoint).
+		// Not a hand-parameterized dispatch like grab-main/grab-off above --
+		// gesture-cast is off-hand only right now (see CLAUDE.md), so there
+		// is no second hand's version of these to share a netevent with.
+		// PLACEHOLDER BINDS: nothing in KEYCONF binds these to the real
+		// grip/trigger/pad keys yet, because doing that safely needs the
+		// engine-side context gating (in progress, owner's own lane) that
+		// stops a gesture-fire from ALSO firing whatever the off hand's own
+		// weapon does on the same physical button. Bind these to throwaway
+		// test keys for now; once the gated keys exist, rebind onto those.
+		else if (evt.name == "rs-hardpoint-gesture-grip")    { fireGesture(evt.player, pawn, 3); }
+		else if (evt.name == "rs-hardpoint-gesture-padx")    { fireGesture(evt.player, pawn, 4); }
+		else if (evt.name == "rs-hardpoint-gesture-trigger") { fireGesture(evt.player, pawn, 5); }
+	}
+
+	// GESTURE-CAST fire, one hardpoint. Confirmed design (owner, 2026-08-25):
+	// palm-out hides the off-hand PSprite weapon model and holds rs_hands in
+	// REACH pose (the "sorcerer" read), and MULTIPLE hardpoints can fire
+	// within the same press -- HP1/2/3 are independent, not mutually
+	// exclusive.
+	//
+	// Hardpoints are weapon-agnostic, same as every torso holster --
+	// whatever is seated here is an ORDINARY Weapon from whatever pack is
+	// loaded, not a bespoke "ability" class. So "fire" means: run THAT
+	// WEAPON'S OWN real Fire state, the same one that runs when it is
+	// normally held and fired.
+	//
+	// SEATED FOR THE WHOLE ARMED STRETCH, hidden the whole time -- NOT a
+	// same-tic swap-fire-swap-back pulse. That was tried first and
+	// rejected: swapping the original weapon back before even one tic has
+	// passed risks tearing the Fire state's psprite down (TickPSprites,
+	// player.zs ~601, destroys any PSP_OFFHANDWEAPON psprite whose Caller
+	// is not the CURRENT OffhandWeapon, every tic) before its action
+	// functions ever actually ran. So instead:
+	//   1. First fire since arming: remember the real off-hand weapon in
+	//      gesturePreviousOff[i] (see that field's own comment for why only
+	//      the FIRST fire captures it).
+	//   2. moveWeaponInstant swaps the requested hardpoint's weapon into
+	//      the off hand -- already-proven machinery (the exact call doSwap
+	//      uses for store/draw), synchronous via CF_INSTANTWEAPSWITCH.
+	//   3. player.SetPsprite jumps the off-hand psprite straight to that
+	//      weapon's own "Fire" state -- same call the engine's own
+	//      TickPSprites uses to seat a weapon into its Ready state
+	//      (player.zs ~1985), just targeting Fire instead.
+	//   4. That new psprite's NoDraw is set true (player.zs PSprite class --
+	//      "Hide this layer without touching the weapon behind it. The
+	//      weapon keeps its states, damage and slot; only the drawing
+	//      stops.") -- exactly the tool for "no hardpoint weapon model
+	//      drawn": the Fire state's action functions still run in full,
+	//      nothing about the attack itself is suppressed, only the render.
+	// It stays seated, hidden, running its own states normally, right up
+	// until updateGestureArm's falling edge swaps the real weapon back --
+	// see that function. gestureArmed keeping HardpointClaimOff forced true
+	// the whole time (updateClaims) is what holds rs_hands in POSE_REACH.
+	//
+	// MULTI-FIRE: firing a second or third hardpoint before disarming just
+	// re-seats a DIFFERENT weapon into the same slot, interrupting whatever
+	// the previous one was doing mid-state -- ordinary weapon-switch
+	// behaviour, not a special case. gesturePreviousOff only remembers the
+	// ONE real weapon from before any of this started, so whichever
+	// hardpoint fired last, disarming always restores the right thing.
+	//
+	// KNOWN GAP: jumping straight to Fire bypasses whatever ammo-check the
+	// weapon normally does on the button-driven path (player.zs ~515,
+	// gated on WeaponState flags this call never sets). Whether that
+	// matters depends on where a given weapon puts its own ammo check --
+	// something to confirm in headset per weapon, not something to guess
+	// at blind here.
+	//
+	// Silent no-op when not armed, when the hardpoint is hidden
+	// (holsterActive), or when nothing is seated there -- none of those
+	// are errors, and two of three buttons doing nothing is the NORMAL
+	// case whenever fewer than three hardpoints are occupied.
+	private void fireGesture(int i, PlayerPawn pawn, int holsterIdx)
+	{
+		if (!gestureArmed[i])
+			return;
+
+		// Same rule updateClaims/updateProps already enforce for every other
+		// consumer of a holster index: a hand should never be able to
+		// trigger anything on a holster it cannot see. Dialing the wrist
+		// tier off (rs_hardpoint_arm_active_count) hides a hardpoint
+		// WITHOUT evacuating whatever is stored in it (updateProps' own
+		// comment), so contents[] can stay non-null on an index that is
+		// currently invisible -- without this check, gesture-fire could
+		// trigger a hidden hardpoint the player cannot even see the marker
+		// for.
+		if (!holsterActive(holsterIdx))
+			return;
+
+		ensureContents();
+		int slot = (i * HOLSTER_COUNT) + holsterIdx;
+		Weapon w = contents[slot];
+		if (w == null)
+			return;
+
+		State fireState = w.FindState('Fire');
+		if (fireState == null)
+		{
+			// A seated item with no Fire state at all -- nothing to run.
+			// Loud rather than silent: an empty slot is normal, a real
+			// weapon missing a Fire state is a content problem worth
+			// seeing in the console.
+			Console.Printf("\cgRS_HARDPOINT: %s has no Fire state, cannot gesture-fire", w.GetClassName());
+			return;
+		}
+
+		ensureGesturePreviousOff();
+
+		// Capture the real off-hand weapon ONLY on the first fire of this
+		// armed stretch -- see gesturePreviousOff's field comment. A second
+		// or third hardpoint fired before disarming must not overwrite this
+		// with whatever the FIRST hardpoint's weapon left seated.
+		if (gesturePreviousOff[i] == null)
+			gesturePreviousOff[i] = pawn.player.OffhandWeapon;
+
+		moveWeaponInstant(pawn, w, 1);
+		pawn.player.SetPsprite(PSP_OFFHANDWEAPON, fireState);
+
+		// No hardpoint weapon model drawn. Stays hidden for as long as it
+		// stays seated -- there is no swap-back here; updateGestureArm's
+		// falling edge is what eventually restores gesturePreviousOff[i].
+		let psp = pawn.player.GetPSprite(PSP_OFFHANDWEAPON);
+		if (psp != null)
+			psp.NoDraw = true;
+
+		level.VRHaptic(1, 0.5, 20.0);
 	}
 
 	// Wraps MoveWeaponToHand with a transient CF_INSTANTWEAPSWITCH, restored
@@ -1762,9 +2010,17 @@ class RS_HardPointManager : EventHandler
 
 		string hsName; double hsFwd, hsSide, hsFrac, hsRadius, hsPitch, hsYaw, hsRoll;
 		GetHolster(holsterIdx, hsName, hsFwd, hsSide, hsFrac, hsRadius, hsPitch, hsYaw, hsRoll);
+		// GetClassName() returns Name, not string -- ?: needs both branches
+		// to be the SAME type (an assignment coerces Name->string fine, a
+		// ternary does not), so the conversion happens on its own line, not
+		// inline in the ternary below. This is exactly what broke the real
+		// compile (line 2015/2061 in the actual error log).
+		string storedName = "";
+		if (stored != null)
+			storedName = stored.GetClassName();
 		Console.Printf("RS_HARDPOINT: %s <-> %s (%s)",
 			heldName == "" ? "fists" : heldName,
-			stored == null ? "empty" : stored.GetClassName(),
+			stored == null ? "empty" : storedName,
 			hsName);
 
 		// Auto-diagnostic: if a real weapon just went INTO this holster (not a
@@ -1805,12 +2061,15 @@ class RS_HardPointManager : EventHandler
 			double dMain = (pawn.AttackPos - anchor).Length();
 			double dOff  = (pawn.OffhandPos - anchor).Length();
 			Weapon slotHas = contents[(i * HOLSTER_COUNT) + h];
+			string slotHasName = "";
+			if (slotHas != null)
+				slotHasName = slotHas.GetClassName();
 
 			Console.Printf("%-13s at %.1f,%.1f,%.1f  r%.0f  main %.1f%s  off %.1f%s  [%s]",
 				hsName, anchor.X, anchor.Y, anchor.Z, hsRadius,
 				dMain, dMain < hsRadius ? " IN" : "",
 				dOff,  dOff  < hsRadius ? " IN" : "",
-				slotHas == null ? "empty" : slotHas.GetClassName());
+				slotHas == null ? "empty" : slotHasName);
 		}
 
 		dumpPropOrientation(i, pawn);

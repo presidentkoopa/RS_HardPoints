@@ -12,6 +12,7 @@ OptionValue "RS_HardPointMarkerShape"
 {
 	0, "Bracket reticle"
 	1, "Wireframe sphere"
+	2, "Wireframe diamond"
 }
 
 OptionValue "RS_HardPointMarkerColor"
@@ -72,6 +73,7 @@ OptionMenu "RS_HardPointOptions"
 	Option "Marker shape",              "rs_hardpoint_marker_shape", "RS_HardPointMarkerShape"
 	Option "Marker color (cold)",       "rs_hardpoint_marker_color", "RS_HardPointMarkerColor"
 	Option "Marker color (hot)",        "rs_hardpoint_marker_color_hot", "RS_HardPointMarkerColor"
+	Slider "Marker scale",              "rs_hardpoint_marker_scale", 0.3, 3.0, 0.1, 2
 	Slider "Hardpoint item size (fallback)", "rs_hardpoint_prop_scale_arm", 0.02, 0.5, 0.01, 2
 	Slider "Fill amount (measured models)",  "rs_hardpoint_prop_fill", 0.1, 1.0, 0.05, 2
 	Slider "Stored item yaw",           "rs_hardpoint_prop_yaw", -180.0, 180.0, 5.0, 0
@@ -82,18 +84,25 @@ OptionMenu "RS_HardPointOptions"
 	Slider "Stored item side",          "rs_hardpoint_prop_side", -12.0, 12.0, 0.5, 1
 	StaticText " "
 
+	StaticText "Gesture-Cast Arming", "Gold"
+	Slider "Palm-out roll target",      "rs_hardpoint_gesture_roll_target", -180.0, 180.0, 5.0, 0
+	Slider "Palm-out roll tolerance",   "rs_hardpoint_gesture_roll_tolerance", 5.0, 90.0, 5.0, 0
+	StaticText " "
+
 	StaticText "Timing & Sound", "Gold"
 	Option "Instant store/draw",       "rs_hardpoint_instant_switch", "OnOff"
 	Option "Store/draw confirm sound", "rs_hardpoint_sound", "OnOff"
 	Option "Confirm sound style",      "rs_hardpoint_sound_style", "RS_HardPointSoundStyle"
 	StaticText " "
 
-	// ENGINE cvars (DoomXR), not this pk3's own -- referencing them here
-	// does not require this pk3 to own or declare them.
+	// ENGINE cvar (DoomXR), not this pk3's own -- referencing it here does
+	// not require this pk3 to own or declare it. Two handed weapons /
+	// stabilize distance used to be listed here too, but those are general
+	// VR control settings, not anything hardpoint-specific -- they already
+	// have a home in the engine's own options menu, and duplicating them
+	// here was just two ways to find the same setting.
 	StaticText "Grip", "Gold"
 	Option "Grip works holsters",       "vr_holster_use_grip", "OnOff"
-	Option "Two handed weapons",        "vr_two_handed_weapons", "OnOff"
-	Slider "Stabilize distance (in)",   "vr_stabilize_distance_inches", 1.0, 24.0, 1.0, 0
 	StaticText " "
 
 	StaticText "Diagnostics", "Gold"

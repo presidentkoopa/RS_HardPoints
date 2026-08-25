@@ -72,13 +72,28 @@ class RS_HardPointMarker : Actor
 	// guard below to proceed regardless of what lastShape happens to hold.
 	private int lastShape;
 
-	// 0 = bracket reticle (the default), 1 = the original wireframe sphere.
-	// Both files stay on disk permanently now -- this is a choice, not a
-	// replacement.
+	// 0 = bracket reticle (the default), 1 = the original wireframe sphere,
+	// 2 = wireframe diamond (rs_hp_diamond.obj -- HardPoints-only, distinct
+	// from the holster shapes, so a hand can tell hardpoint gear apart from
+	// torso holster gear at a glance). All three files stay on disk
+	// permanently -- each is a choice, not a replacement.
 	static int holsterMarkerShape()
 	{
 		let cv = CVar.GetCVar("rs_hardpoint_marker_shape", players[consoleplayer]);
 		return (cv != null) ? cv.GetInt() : 0;
+	}
+
+	// Live-tunable overall marker size, independent of the proximity-tighten
+	// multiplier Tick() already applies -- that one is a fixed, momentary
+	// squeeze as a hand approaches; this is a flat user preference (some
+	// people want the reticles reading small and out of the way, some want
+	// them big and obvious), so it composes with the tighten rather than
+	// replacing it. 1.0 leaves the mesh at its authored unit-radius* Scale-3
+	// size, same as before this cvar existed.
+	static double markerScale()
+	{
+		let cv = CVar.GetCVar("rs_hardpoint_marker_scale", players[consoleplayer]);
+		return (cv != null) ? cv.GetFloat() : 1.0;
 	}
 
 	// A fixed small palette, not an arbitrary color picker. GZDoom's
@@ -140,7 +155,9 @@ class RS_HardPointMarker : Actor
 		// and A_ChangeModel is the mechanism already proven to work on the
 		// weapon props -- so use the one that is known good.
 		name skinWanted = hot ? 'rs_hp_wire_hot.png' : 'rs_hp_wire_idle.png';
-		name modelWanted = (wantShape == 1) ? 'rs_hp_wiresphere.obj' : 'rs_hp_bracket.obj';
+		name modelWanted = 'rs_hp_bracket.obj';
+		if (wantShape == 1) modelWanted = 'rs_hp_wiresphere.obj';
+		else if (wantShape == 2) modelWanted = 'rs_hp_diamond.obj';
 		A_ChangeModel('RS_HardPointMarker', 0, "models", modelWanted, 0, "models", skinWanted);
 	}
 
@@ -210,8 +227,9 @@ class RS_HardPointMarker : Actor
 		// a straight multiplier on top of MODELDEF's own Scale (RenderModel:
 		// scaleFactorX = actor->Scale.X * smf->xscale) -- the same mechanism
 		// RS_HardPointProp already uses to size the stored weapon, just driven
-		// by proximity here instead of a fixed cvar.
-		double s = 1.0 - (0.28 * proximity01);
+		// by proximity here instead of a fixed cvar. markerScale() composes on
+		// top as a flat user preference, not a replacement for the tighten.
+		double s = (1.0 - (0.28 * proximity01)) * markerScale();
 		Scale = (s, s);
 
 		// Pulse, hot state only -- a marker breathing at every holster all
