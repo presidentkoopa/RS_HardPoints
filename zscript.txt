@@ -12,7 +12,7 @@ version "4.14"
 //     all; only the visible model needs one, and it does not care which.
 //   - The engine (UZDXREMA/DoomXR) fields this drives are native, not stock
 //     GZDoom: OffhandPos/Angle/Pitch/Roll and the matching Attack* pair,
-//     HmdPos/HmdYaw/HmdPitch/HmdRoll, HolsterClaimMain/Off, GripContextMain/
+//     HmdPos/HmdYaw/HmdPitch/HmdRoll, HardpointClaimMain/Off, GripContextMain/
 //     Off, VRTurnYaw, ReadyWeapon/OffhandWeapon and MoveWeaponToHand's
 //     dual-wield hand routing, and the natives level.VRHaptic /
 //     level.GetModelOrientationHint / level.GetModelOffsetHint /
