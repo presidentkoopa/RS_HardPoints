@@ -983,7 +983,20 @@ class RS_HardPointManager : EventHandler
 	// move with the player's head every frame and there is nothing to parent to.
 	private void updateProps(int i, PlayerPawn pawn)
 	{
-		if (!showProps())
+		// TWO INDEPENDENT SWITCHES as of 2026-08-26, matching the same split in
+		// RS_Holsters. The markers (wireframe rings showing WHERE a mount is)
+		// and the props (the stored item's model) are separate actor arrays and
+		// used to share one cvar.
+		//
+		// The menu row was labelled "Show hardpoint markers" and did the exact
+		// opposite: the early return below only ever touched props[], while
+		// every line that positions markers[] sits after it. Switching it off
+		// hid your stored items and left the rings visible and FROZEN in world
+		// space, no longer tracking your arm.
+		bool wantProps   = showProps();
+		bool wantMarkers = showMarkers();
+
+		if (!wantProps || !wantMarkers)
 		{
 			// Setting invisible rather than destroying: the player can toggle
 			// this mid-session, and respawning six actors on every toggle is
@@ -991,10 +1004,17 @@ class RS_HardPointManager : EventHandler
 			for (int h = 0; h < HOLSTER_COUNT; ++h)
 			{
 				int pi = (i * HOLSTER_COUNT) + h;
-				if (pi < props.Size() && props[pi] != null)
+				if (!wantProps && pi < props.Size() && props[pi] != null)
 					props[pi].SetVisible(false);
+				if (!wantMarkers && pi < markers.Size() && markers[pi] != null)
+					markers[pi].SetVisible(false);
 			}
-			return;
+
+			// Only bail entirely when there is nothing left to draw. With one
+			// of the two still on, the loop below must run so that one keeps
+			// tracking the arm.
+			if (!wantProps && !wantMarkers)
+				return;
 		}
 
 		ensureContents();
@@ -1091,7 +1111,7 @@ class RS_HardPointManager : EventHandler
 
 			if (markers[pi] != null)
 			{
-				markers[pi].SetVisible(true);
+				markers[pi].SetVisible(wantMarkers);
 				markers[pi].SetOrigin(at, true);
 				markers[pi].SetHot(hot);
 
@@ -1228,7 +1248,14 @@ class RS_HardPointManager : EventHandler
 			// a wrist-mounted flashlight should read as compact gear, not a
 			// full holstered sidearm.
 			double propScale = isHandAnchored(h) ? RS_HardPointProp.holsterPropScaleArm() : RS_HardPointProp.holsterPropScale();
-			p.ShowWeapon(stored, propScale, hsRadius);
+
+			// Passing null is the existing "this mount is empty" path --
+			// ShowWeapon sets pendingClear and fades the model out. Reusing it
+			// for "stored items are switched off" means the hide takes the same
+			// well-tested route rather than a second way to make a prop
+			// invisible, and it comes back correctly when switched on again.
+			Weapon toShow = wantProps ? stored : null;
+			p.ShowWeapon(toShow, propScale, hsRadius);
 
 			// Face the same way the BODY does (not the head), so a holstered
 			// gun stays put on the hip when you look around, plus a tunable
@@ -1407,9 +1434,19 @@ class RS_HardPointManager : EventHandler
 			markers.Push(null);
 	}
 
+	// The STORED ITEM models parked in occupied hardpoints.
 	private bool showProps() const
 	{
 		let cv = CVar.GetCVar("rs_hardpoint_props", players[consoleplayer]);
+		return (cv != null) ? cv.GetBool() : true;
+	}
+
+	// The WIREFRAME MARKERS showing where each mount is. Separate actors from
+	// the props and, since 2026-08-26, a separate switch -- see updateProps for
+	// why they used to share one and what that broke.
+	private bool showMarkers() const
+	{
+		let cv = CVar.GetCVar("rs_hardpoint_markers", players[consoleplayer]);
 		return (cv != null) ? cv.GetBool() : true;
 	}
 

@@ -1,5 +1,14 @@
-// Show a model of the stored item at each hardpoint anchor.
+// Show a model of the stored item at each OCCUPIED hardpoint anchor.
 user bool rs_hardpoint_props = true;
+
+// Show the wireframe marker at each hardpoint anchor -- the ring or bracket
+// that tells you where the mount is, and lights up when a hand is in range.
+//
+// SPLIT OUT 2026-08-26, matching RS_Holsters. This used to be part of
+// rs_hardpoint_props under a menu row labelled "Show hardpoint markers" that
+// did the opposite of its name: it hid the stored ITEMS and left the markers
+// visible and frozen where they last were, no longer tracking the arm.
+user bool rs_hardpoint_markers = true;
 
 // Hardpoint prop appearance. Live-tunable because the right values are found
 // by looking at them in the headset, not by reasoning about model units.
