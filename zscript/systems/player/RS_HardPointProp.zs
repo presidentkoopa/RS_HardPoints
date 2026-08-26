@@ -300,7 +300,21 @@ class RS_HardPointProp : Actor
 
 	// The class currently displayed, so a re-show with the same weapon does
 	// not rebind the model every tic.
-	class<Weapon> shownClass;
+	// The class currently displayed, so a re-show with the same item does not
+	// rebind the model every tic. Actor, not Weapon: this is now the RESOLVED
+	// model class from level.GetActorModelClass(w), which can be a donor class
+	// belonging to a completely different mod (ModelSwapper) rather than the
+	// item's own class.
+	//
+	// THIS LINE IS HALF THE FIX. GetActorModelClass is declared
+	// `native class<Actor> GetActorModelClass(Actor act)` (doombase.zs:1057),
+	// so leaving this as class<Weapon> makes `shownClass = wantClass` a
+	// narrowing class-pointer assignment -- Actor does not descend from Weapon
+	// -- which is a hard "Incompatible class types" compile error, and a
+	// ZScript error is fatal AND global: it stops every pk3 later in the load
+	// order compiling too. Porting the sibling's five call sites without this
+	// declaration does not half-work, it fails to build.
+	class<Actor> shownClass;
 
 	// Measured, not guessed. Whether THIS specific weapon's MODELDEF mirrors
 	// it (negative X Scale) plus its own baked AngleOffset/PitchOffset/
