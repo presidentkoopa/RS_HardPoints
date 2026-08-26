@@ -20,8 +20,19 @@ if (-not (Test-Path $sevenZip)) { throw "7-Zip not found at $sevenZip" }
 
 if (Test-Path $out) { Remove-Item $out -Force }
 
+# EXCLUSIONS EXTENDED 2026-08-26. The shipped RS_HardPoints.zip was carrying
+# README.md. A lump name IGNORES ITS EXTENSION, so anything left in the tree
+# can shadow a real lump -- a stray MODELDEF.bak in a pk3 root has silently
+# replaced the real MODELDEF before.
+#
+# STRUCTURAL NOTE: this is an EXCLUSION list, so it can only ever exclude what
+# somebody thought of. The durable fix is an explicit INCLUDE list naming what
+# belongs in the pk3 -- see E:\mERGE\RS_VR_Unified\build.ps1. Left as
+# exclusions here because a wrong include list silently drops content and
+# breaks the mod, which is worse than shipping a stray text file.
 & $sevenZip a -tzip -mx=0 $out "$root\*" -r `
-    '-xr!.git' '-x!.gitattributes' '-x!.gitignore' '-x!build.ps1' '-x!RS_HardPoints.zip' '-xr!media' | Out-Null
+    '-xr!.git' '-x!.gitattributes' '-x!.gitignore' '-x!build.ps1' '-x!RS_HardPoints.zip' '-xr!media' `
+    '-xr!.claude' '-xr!*.md' '-xr!*.bak' '-xr!__pycache__' | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "7-Zip failed with exit code $LASTEXITCODE" }
 
 Write-Output ("built {0} ({1:N0} bytes)" -f $out, (Get-Item $out).Length)

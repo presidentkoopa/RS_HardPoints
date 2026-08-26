@@ -535,7 +535,20 @@ class RS_HardPointProp : Actor
 	// value this method would otherwise have no way to see.
 	void ShowWeapon(Weapon w, double fallbackScale, double holsterRadius)
 	{
-		let wantClass = (w != null) ? w.GetClass() : null;
+		// GetActorModelClass, not w.GetClass() -- reads what THIS INSTANCE
+		// actually resolves against right now, which is a donor class rather
+		// than w's own class whenever something else (ModelSwapper, or
+		// anything working the same way) has model-swapped w per-instance.
+		// w's own class remains the answer for everything never touched that
+		// way -- a strict superset of the old behaviour, not a different one
+		// for the common case.
+		//
+		// This landed in RS_Holsters (RS_HolsterProp.zs:543) after the
+		// 2026-08-23 split and never crossed over, so a ModelSwapper weapon
+		// rendered correctly in a torso holster and wrong on an arm mount.
+		// All five sites below take the resolved class, exactly as the
+		// sibling does -- resolve once, use everywhere.
+		let wantClass = (w != null) ? level.GetActorModelClass(w) : null;
 		if (wantClass != shownClass)
 		{
 			shownClass = wantClass;
@@ -570,7 +583,7 @@ class RS_HardPointProp : Actor
 
 			bool found;
 			[found, mirrored, bakedAngleOffset, bakedPitchOffset, bakedRollOffset]
-				= level.GetModelOrientationHint(w.GetClass(), sprite, frame);
+				= level.GetModelOrientationHint(wantClass, sprite, frame);
 			if (!found)
 			{
 				mirrored = false;
@@ -582,7 +595,7 @@ class RS_HardPointProp : Actor
 			double stretch = (level.info != null) ? level.info.pixelstretch : 1.0;
 			bool foundOff;
 			[foundOff, bakedOffX, bakedOffY, bakedOffZ]
-				= level.GetModelOffsetHint(w.GetClass(), sprite, frame, stretch);
+				= level.GetModelOffsetHint(wantClass, sprite, frame, stretch);
 			if (!foundOff)
 			{
 				bakedOffX = 0.0; bakedOffY = 0.0; bakedOffZ = 0.0;
@@ -592,15 +605,15 @@ class RS_HardPointProp : Actor
 			// hints above -- the native call and FindModelFrame lookup are
 			// the expensive part. What that measurement is USED for (below)
 			// is not gated the same way.
-			[boundsFound, measuredRadius] = level.GetModelBoundsHint(w.GetClass(), sprite, frame);
+			[boundsFound, measuredRadius] = level.GetModelBoundsHint(wantClass, sprite, frame);
 
 			popTicsRemaining = POP_TICS;   // settle-pop on every fresh show
 
-			// Borrow the weapon's model definition onto this instance. After
-			// this, FindModelFrame resolves against the weapon's class rather
-			// than RS_HardPointProp, and the (sprite, frame) set above
-			// completes the key.
-			A_ChangeModel(w.GetClassName());
+			// Borrow the RESOLVED model definition onto this instance --
+			// wantClass, not w.GetClassName(). After this, FindModelFrame
+			// resolves against that class rather than RS_HardPointProp, and
+			// the (sprite, frame) set above completes the key.
+			A_ChangeModel(wantClass.GetClassName());
 		}
 
 		if (w == null)
