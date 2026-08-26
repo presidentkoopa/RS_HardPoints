@@ -104,3 +104,21 @@ user int rs_hardpoint_arm_active_count = 1;
 // live number to tune against.
 user float rs_hardpoint_gesture_roll_target = 0.0;
 user float rs_hardpoint_gesture_roll_tolerance = 30.0;
+
+// The throttled wrist-pitch dump referenced just above. OFF by default,
+// added 2026-08-26 -- it was previously unconditional, so it printed two
+// lines every 10 tics (about 7 lines a second) into the console of anyone
+// running the wrist tier, in a shipped build.
+//
+// GATED, NOT DELETED: the wrist-pitch hypothesis it exists to test is still
+// open. handBasisPose reads OffhandPitch RAW while every other consumer in
+// the family negates it, which would invert the vertical response of wrist
+// anchors 3-5. Nothing has been changed on the strength of that yet, on
+// purpose -- this file's rotation math has been hand-derived wrongly twice
+// before. Turn this on, tilt the wrist, read the numbers against the actual
+// physical tilt.
+//
+// NAMED _wristdump, NOT _debug: KEYCONF:35 already binds an alias called
+// rs_hardpoint_debug, and a cvar sharing that name would collide in the
+// console namespace.
+user bool rs_hardpoint_wristdump = false;

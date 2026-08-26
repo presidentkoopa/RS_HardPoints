@@ -389,8 +389,16 @@ class RS_HardPointManager : EventHandler
 			// all three wrist slots, so one prediction does not obviously
 			// hold the same way for all three -- read the numbers against
 			// the actual tilt rather than trusting a guess about the sign.
+			// GATED BEHIND rs_hardpoint_wristdump AS OF 2026-08-26. This block
+			// was previously reached whenever the wrist tier was active, so a
+			// shipped build printed two lines every 10 tics -- roughly 7 lines
+			// a second -- into the player's console. The diagnostic is kept
+			// because the hypothesis it tests is still open; it just no longer
+			// runs by default.
 			int wristMode = armMode();
-			if ((wristMode == 2 || wristMode == 3) && (level.time % 10) == 0)
+			let cWristDump = CVar.GetCVar("rs_hardpoint_wristdump", pawn.player);
+			bool wantDump = (cWristDump != null) && cWristDump.GetBool();
+			if (wantDump && (wristMode == 2 || wristMode == 3) && (level.time % 10) == 0)
 			{
 				Vector3 belowP = anchorPos(i, pawn, 3);
 				Vector3 knuckP = anchorPos(i, pawn, 4);

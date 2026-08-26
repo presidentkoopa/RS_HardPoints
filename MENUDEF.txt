@@ -107,4 +107,8 @@ OptionMenu "RS_HardPointOptions"
 
 	StaticText "Diagnostics", "Gold"
 	SafeCommand "Debug dump to console", "netevent rs-hardpoint-debug"
+	Option "Wrist pitch live dump",      "rs_hardpoint_wristdump", "OnOff"
+	StaticText "Prints raw OffhandPitch/Roll/Angle and all three wrist", "DarkGray"
+	StaticText "anchor positions ~7x a second while the wrist tier is on.", "DarkGray"
+	StaticText "For tuning the gesture roll target against a real tilt.", "DarkGray"
 }
