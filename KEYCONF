@@ -17,14 +17,34 @@ addkeysection "RS HardPoints" RSHardPoints
 // so if both mods bound F13 to their own alias the second one loaded would
 // silently win and the other would never see a grip press again. Both bind
 // their own alias (no KEYCONF collision) and both fire rs-vrhp-grab-*, which
-// every handler receives. Which mod actually acts needs no coordination: its
-// doSwap returns immediately unless the hand is inside one of ITS anchors,
-// and a hand is only ever in one place.
+// every handler receives, and each mod's doSwap returns immediately unless
+// the hand is inside one of ITS anchors.
+//
+// THAT IS NOT ARBITRATION, and this comment used to say it was ("a hand is
+// only ever in one place"). It is false as soon as two anchors from the two
+// mods overlap, which is easy -- a wrist mount rides the forearm and a hip
+// holster sits on the body, and one reach can put the hand inside both. Both
+// handlers receive the same netevent, both find a claim, and BOTH act on one
+// press. A real grip arbiter is in progress; until it lands, one-mod-acts is
+// a property of where the anchors happen to be, not of this design.
 addmenukey "Hardpoint: store/draw (MAIN hand)" rs_hardpoint_main
 alias rs_hardpoint_main "netevent rs-vrhp-grab-main"
 
 addmenukey "Hardpoint: store/draw (OFF hand)" rs_hardpoint_off
 alias rs_hardpoint_off "netevent rs-vrhp-grab-off"
+
+// Re-takes the standing eye-height sample (RS_HardPoints.zs,
+// ForceRecalibrate). ADDED 2026-08-26: NetworkProcess has handled
+// "rs-hardpoint-recalibrate" since the split, but nothing anywhere fired it
+// -- no alias here, no menu row -- so the only way to reach it was typing
+// the netevent into the console by hand. It matters less here than in
+// RS_Holsters (the arm mounts hang off a tracked controller, not off a body
+// measured against eye height) but it is not dead weight either: eyeHeight
+// is what anchorPos scales edFrac by, and the whole system refuses to run at
+// all until calibration lands, so "sat down during the auto sample" is still
+// a state you need a way out of.
+addmenukey "Hardpoint: recalibrate height" rs_hardpoint_recal
+alias rs_hardpoint_recal "netevent rs-hardpoint-recalibrate"
 
 // Dumps head pose, both hand positions, every anchor's world position and
 // distance from each hand, and (if anything is stored) the exact orientation/

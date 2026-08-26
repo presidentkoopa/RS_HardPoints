@@ -56,6 +56,10 @@ OptionMenu "RS_HardPointOptions"
 	SafeCommand "Edit Mode -- grab spheres and move them", "netevent rs-hardpoint-edit"
 	SafeCommand "Print tuned table to console",            "netevent rs-hardpoint-table"
 	SafeCommand "Reset offsets to defaults",               "netevent rs-hardpoint-reset"
+	// ADDED 2026-08-26. NetworkProcess has handled this netevent since the
+	// split, with no alias and no menu row anywhere -- reachable only by
+	// typing it into the console.
+	SafeCommand "Recalibrate standing height",             "netevent rs-hardpoint-recalibrate"
 	StaticText " "
 
 	// The CURRENT edit-table -- tune it with Edit Mode above, then save it,
@@ -78,6 +82,13 @@ OptionMenu "RS_HardPointOptions"
 	Option "Marker color (hot)",        "rs_hardpoint_marker_color_hot", "RS_HardPointMarkerColor"
 	Slider "Marker scale",              "rs_hardpoint_marker_scale", 0.3, 3.0, 0.1, 2
 	Slider "Hardpoint item size (fallback)", "rs_hardpoint_prop_scale_arm", 0.02, 0.5, 0.01, 2
+	// The torso-scale dial. Every mount in this fork is arm-anchored, so it
+	// is the slider above that does the work here -- but this cvar was READ
+	// by RS_HardPointProp.holsterPropScale() while being declared in no
+	// CVARINFO at all, which meant it silently ran at its hardcoded 0.18
+	// fallback with no way to see or change it. Declared and given a row
+	// 2026-08-26; it becomes live again when the two forks merge back.
+	Slider "Torso item size (fallback)", "rs_hardpoint_prop_scale", 0.02, 1.0, 0.01, 2
 	Slider "Fill amount (measured models)",  "rs_hardpoint_prop_fill", 0.1, 1.0, 0.05, 2
 	Slider "Stored item yaw",           "rs_hardpoint_prop_yaw", -180.0, 180.0, 5.0, 0
 	Slider "Stored item pitch",         "rs_hardpoint_prop_pitch", -180.0, 180.0, 5.0, 0
@@ -88,6 +99,12 @@ OptionMenu "RS_HardPointOptions"
 	StaticText " "
 
 	StaticText "Gesture-Cast Arming", "Gold"
+	Option "Enable gesture-cast",       "rs_hardpoint_gesture_enable", "OnOff"
+	StaticText "Off by default. Arming is a roll test that a hand at rest", "DarkGray"
+	StaticText "already passes, so leaving this on pins the off hand's", "DarkGray"
+	StaticText "grip claim permanently. Also needs the wrist tier live", "DarkGray"
+	StaticText "(Which hardpoints = Wrist only / All six) and edit mode off.", "DarkGray"
+	StaticText "Its fire keys are still PLACEHOLDER binds -- see KEYCONF.", "DarkGray"
 	Slider "Palm-out roll target",      "rs_hardpoint_gesture_roll_target", -180.0, 180.0, 5.0, 0
 	Slider "Palm-out roll tolerance",   "rs_hardpoint_gesture_roll_tolerance", 5.0, 90.0, 5.0, 0
 	StaticText " "
@@ -110,6 +127,10 @@ OptionMenu "RS_HardPointOptions"
 
 	StaticText "Diagnostics", "Gold"
 	SafeCommand "Debug dump to console", "netevent rs-hardpoint-debug"
+	Option "Verbose console logging",    "rs_hardpoint_verbose", "OnOff"
+	StaticText "Range enter/leave lines, and the automatic orientation", "DarkGray"
+	StaticText "dump after every store. Off in a normal build; the", "DarkGray"
+	StaticText "manual dump above and the range haptic are unaffected.", "DarkGray"
 	Option "Wrist pitch live dump",      "rs_hardpoint_wristdump", "OnOff"
 	StaticText "Prints raw OffhandPitch/Roll/Angle and all three wrist", "DarkGray"
 	StaticText "anchor positions ~7x a second while the wrist tier is on.", "DarkGray"

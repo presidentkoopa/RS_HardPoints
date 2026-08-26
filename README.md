@@ -14,6 +14,8 @@ Utility slots, not a second gun rack — grenades, a flashlight, a tool.
 - marker rings you can see when empty, separate cold and hot colors
 - stored items show their real model, auto-scaled to fit the ring
 - grip to store/draw, removing the item from weapon cycling while it's stowed
+- gesture-cast: roll palm-out and fire the wrist mounts in place (off by
+  default — see below)
 
 ### Requires
 
@@ -34,9 +36,16 @@ synthesises F13 (main hand) / F14 (off hand) for a holster-context grip, and a
 key binds to exactly one alias — so if both mods claimed F13 the second one
 loaded would silently win and the other would never see a grip press again.
 Both bind their own alias name, and both aliases fire the same
-`rs-vrhp-grab-*` netevent that every handler receives. Which mod acts needs no
-coordination at all: each one's swap returns immediately unless your hand is
-inside one of its own anchors, and your hand is only ever in one place.
+`rs-vrhp-grab-*` netevent that every handler receives, and each mod's swap
+returns immediately unless your hand is inside one of its own anchors.
+
+That is **not** full arbitration, and this README used to claim it was. The
+old wording — "your hand is only ever in one place" — is false the moment two
+anchors from the two mods overlap, which is easy: a wrist mount rides your own
+forearm and a hip holster sits on your body, and reaching one can put your hand
+inside both. Both handlers then receive the same netevent, both find a claim,
+and **both act on one grip press.** A real arbiter is being built for this; the
+current state is one-in-one-place *by luck of placement*, not by design.
 
 **No default binds.** Bind the store/draw keys yourself under Customize
 Controls — F13 and F14 are what the engine sends if you want grip to do it.
@@ -61,9 +70,29 @@ There's no elbow tracking — every position is a fixed offset from the off
 hand's own pose, so "where the forearm actually is" is approximated rather
 than measured. Real IK is waiting on a pending engine update.
 
+### Gesture-cast — built, off by default
+
+Roll your off wrist palm-out and the three wrist mounts arm. Each has its own
+fire key, and pressing one runs *that item's own Fire state* in place — it
+stays on the mount, hidden, rather than being drawn into your hand. Firing a
+second or third before you roll back just re-seats a different one; rolling
+back out returns whatever you were really holding.
+
+**Switch it on with `rs_hardpoint_gesture_enable`** (Arm Hardpoints → Gesture-
+Cast Arming). It defaults off for a reason: arming is a wrist-roll test, and a
+hand hanging at rest already passes it, so leaving it on would hold your off
+hand permanently armed. It also needs the wrist tier live ("Which hardpoints"
+set to *Wrist only* or *All six*) and edit mode off.
+
+The three fire keys are still **placeholder binds** — bind them to throwaway
+test keys, not to real grip/trigger/pad. Putting them on the real controller
+buttons needs engine-side context gating that does not exist yet; without it a
+trigger pull would fire the gesture *and* whatever your off hand's own weapon
+does.
+
 ### Planned
 
-- **Gesture-cast**: arm extended, palm rolled up, and the three mounts fire
-  what's on them *in place* rather than drawing into your hand.
 - **Paged forearm inventory**: treat a forearm mount as a row you cycle
   through rather than one fixed item.
+- **Both forearms**: mounts on the main arm too, reached by the off hand, with
+  its own saved layout.

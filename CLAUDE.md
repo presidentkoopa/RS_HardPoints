@@ -114,39 +114,56 @@ fix landing in one sibling and not the other — including the
 
 ## Open work
 
-34 findings from the 2026-08-25 audit. The big ones:
+34 findings from the 2026-08-25 audit.
 
-**Gesture-cast (the open-palm firing) — six defects, one can crash:**
-- `fireGesture` (`:1729`) omits `doSwap`'s wrong-hand guard, then `SetPsprites` a
-  foreign weapon's Fire state. The same file documents that guard 700 lines away
-  as a **VM abort**.
-- Firing a mount **empties it** — `updateProps` reconciliation nulls the slot the
-  same tic (`:1174`).
-- Arming is **on at rest by default and ungated** (`:1484`), pinning
-  `HardpointClaimOff` true forever.
-- **No hysteresis** on the roll threshold (`:1487`) — boundary chatter spams
-  haptics, console and weapon swaps.
-- Never clears `bHolsterHidden`/`bNoAutoSwitchTo` (`:1686`), which this file says
-  blocks firing entirely.
-- **Not gated on edit mode** (`:1616`) — placement and live fire coexist.
+### Fixed 2026-08-26 (do not redo — re-locate by name, line numbers moved)
 
-**Lifecycle:**
-- A level change **permanently bricks** any stowed weapon (`:56`) —
-  `bHolsterHidden` outlives the per-level handler that clears it.
-- The **saved layout never auto-loads** (`:1582`); tuning resets to the
-  placeholder table every map.
-- Edit-mode drag state is a single global, and a disconnecting player **leaks 12
-  visible actors** (`:274`).
+All of these landed in **both** siblings where they existed in both.
 
-**Declared nowhere:** `rs_hardpoint_prop_scale` is read by
-`RS_HardPointProp.zs:351` but declared in no CVARINFO — it silently runs at 0.18.
+**Gesture-cast, all six defects:**
+- `fireGesture` now carries `doSwap`'s wrong-hand guard
+  (`w.bNoHandSwitch && !w.bOffhandWeapon`) ahead of the `SetPsprite`.
+- Firing a mount no longer empties it: `updateProps`' reconciliation exempts the
+  one instance named by the new `gestureSeatedOff[]` array.
+- Arming is gated on a new `rs_hardpoint_gesture_enable` (**defaults off**), on
+  the wrist tier being live, and on edit mode being off.
+- `GESTURE_ROLL_HYSTERESIS = 1.35` — enter at the tolerance, leave past it.
+- `fireGesture` strips `bHolsterHidden`/`bNoAutoSwitchTo` so the weapon can
+  actually fire; `updateGestureArm`'s falling edge puts them back, and multi-fire
+  re-stows the previously seated one.
+- `fireGesture` re-checks the master switch and edit mode itself, because a
+  netevent can arrive between two `WorldTick`s.
 
-**Unreachable:** `rs-hardpoint-recalibrate` is handled (`:1526`) but has no alias
-and no menu entry.
+**Lifecycle — the class had NO overrides but `WorldTick`/`NetworkProcess`:**
+`PlayerDied`, `PlayerRespawned`, `PlayerDisconnected`, `WorldUnloaded`,
+`WorldLoaded` now exist, plus `releasePlayer` / `despawnPlayerActors` /
+`unstowInventory` / `autoLoadLayout`. That covers the level-change bricking, the
+never-auto-loading layout, and the 12 leaked actors per disconnect. Edit-mode
+drag state (`editMode`/`grabbedMain`/`grabbedOff`) is per-player now, and
+`updateGrabs` calls `ensureEdit()` first so the int zero-default can never read
+as "dragging holster 0".
+
+**Declared:** `rs_hardpoint_prop_scale` is in CVARINFO with a menu row.
+**Reachable:** `rs-hardpoint-recalibrate` has an alias and a menu row.
+**Audible:** the store/draw cue named `rs_fx_holster`/`rs_allclear_ready`, which
+only RS_Main defines — an undefined sound is silence, not an error, so it had
+never played. The audio now ships here as `rs_hardpoint_fx_store`/`_ready`
+(`SNDINFO.txt`, `sounds/RSHP*.ogg`); RS_Holsters ships the same under `RSHO*`.
+**Gated:** `rs_hardpoint_verbose` covers the range edge lines and the automatic
+post-store dump. The haptic and the manual dump are deliberately outside it.
+
+### Still open
 
 **Needs the arbiter:** two invisible independent backup/restore stacks for the
-same `OffhandWeapon` slot (`:1727`); both managers acting on the shared
-`rs-vrhp-grab-*` netevent (`:1600`).
+same `OffhandWeapon` slot (`gesturePreviousOff` here, `pouchPrevious*` in
+RS_Holsters); both managers acting on the shared `rs-vrhp-grab-*` netevent. The
+lifecycle pass only nulls those pointers when the pawn dies — it does not touch
+the capture/restore protocol, deliberately.
+
+**The "one hand, one place" claim was false and is now documented as false** in
+all five places it appeared (both KEYCONFs, both `NetworkProcess` comments, this
+repo's README). Overlapping anchors between the two mods mean one grip press can
+be acted on by both handlers.
 
 **Open headset questions — both now live cvars rather than blocking:**
 - **Wrist pitch.** `handBasisPose` reads `OffhandPitch` **raw** while every other
