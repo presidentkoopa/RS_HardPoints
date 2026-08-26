@@ -69,32 +69,59 @@ alias rs_hardpoint_reset "netevent rs-hardpoint-reset"
 // RS_Holsters has -- those mounts hang off a body, where a table tuned
 // standing does not fit a seated one; these are bolted to a tracked
 // controller, so posture is not a variable and two slots would be two names
-// for the same numbers. No default binds: setup-time actions, not something
-// you want a stray controller press triggering mid-game.
+// for the same numbers. One slot still covers BOTH arms: each arm has its
+// own layout (it has to -- the mounts sit relative to whichever controller
+// wears them) but the two occupy separate key ranges in the same file, so
+// one save writes both and one load restores both. No default binds:
+// setup-time actions, not something you want a stray controller press
+// triggering mid-game.
 addmenukey "Hardpoint: save tuned layout" rs_hardpoint_save_layout
 alias rs_hardpoint_save_layout "netevent rs-hardpoint-save-layout"
 
 addmenukey "Hardpoint: load tuned layout" rs_hardpoint_load_layout
 alias rs_hardpoint_load_layout "netevent rs-hardpoint-load-layout"
 
-// GESTURE-CAST fire. Off hand only, wrist trio only -- see CLAUDE.md. Each
-// alias is hardcoded to ONE hardpoint index the owner assigned it
-// (2026-08-25): grip -> 3, pad/X -> 4, trigger -> 5. Only takes effect while
-// the off hand is rolled into the arming pose (RS_HardPoints.zs,
-// updateGestureArm/fireGesture) -- pressing these outside that pose does
-// nothing, on purpose.
+// GESTURE-CAST fire. WRISTS FIRE, HOLSTERS DRAW: these do NOT draw the
+// weapon. The mount's weapon runs its own Fire state in place, invisibly,
+// and goes straight back on the mount -- see RS_HardPoints.zs' fireGesture.
+// Drawing is the torso holsters' verb (RS_Holsters), deliberately.
+//
+// SIX ALIASES, three per arm, because an arm arms its OWN three mounts: roll
+// that wrist palm-out and its trio becomes live. That is the mirror of
+// store/draw, where a hand can only reach the OTHER arm's bank. Each alias
+// is hardcoded to ONE mount index, keeping the per-button assignment the
+// owner made on 2026-08-25: grip -> Below, pad/X -> Knuckle,
+// trigger -> Joint.
+//
+// THE OFF TRIO KEPT ITS ORIGINAL ALIAS NAMES, NETEVENT NAMES AND INDICES
+// (3/4/5) through the 2026-08-26 re-layout, so any bind a player already
+// made still means exactly what it meant. The main trio is new and takes
+// 0/1/2, which is where the deferred forearm row used to sit.
+//
+// Only takes effect while THAT hand is rolled into the arming pose
+// (RS_HardPoints.zs, updateGestureArm/updateGestureArmMain) -- pressing
+// these outside that pose does nothing, on purpose.
 //
 // PLACEHOLDER BINDS -- bind to a throwaway test key for now, NOT to the
 // real grip/trigger/pad. Wiring these onto the actual controller buttons
 // safely needs engine-side context gating that does not exist yet: without
-// it, a raw trigger read would ALSO fire whatever the off hand's own held
+// it, a raw trigger read would ALSO fire whatever that hand's own held
 // weapon does on that same physical pull. Once that engine work lands,
 // rebind onto whatever gated key it publishes.
-addmenukey "Hardpoint: gesture-fire GRIP (hardpoint 3)" rs_hardpoint_gesture_grip
+addmenukey "Hardpoint: OFF gesture-fire GRIP (mount 3)" rs_hardpoint_gesture_grip
 alias rs_hardpoint_gesture_grip "netevent rs-hardpoint-gesture-grip"
 
-addmenukey "Hardpoint: gesture-fire PAD/X (hardpoint 4)" rs_hardpoint_gesture_padx
+addmenukey "Hardpoint: OFF gesture-fire PAD/X (mount 4)" rs_hardpoint_gesture_padx
 alias rs_hardpoint_gesture_padx "netevent rs-hardpoint-gesture-padx"
 
-addmenukey "Hardpoint: gesture-fire TRIGGER (hardpoint 5)" rs_hardpoint_gesture_trigger
+addmenukey "Hardpoint: OFF gesture-fire TRIGGER (mount 5)" rs_hardpoint_gesture_trigger
 alias rs_hardpoint_gesture_trigger "netevent rs-hardpoint-gesture-trigger"
+
+addmenukey "Hardpoint: MAIN gesture-fire GRIP (mount 0)" rs_hardpoint_gesture_main_grip
+alias rs_hardpoint_gesture_main_grip "netevent rs-hardpoint-gesture-main-grip"
+
+addmenukey "Hardpoint: MAIN gesture-fire PAD/X (mount 1)" rs_hardpoint_gesture_main_padx
+alias rs_hardpoint_gesture_main_padx "netevent rs-hardpoint-gesture-main-padx"
+
+addmenukey "Hardpoint: MAIN gesture-fire TRIGGER (mount 2)" rs_hardpoint_gesture_main_trigger
+alias rs_hardpoint_gesture_main_trigger "netevent rs-hardpoint-gesture-main-trigger"

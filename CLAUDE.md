@@ -26,27 +26,45 @@ of one idea; they have distinct purposes:
 **Holsters (RS_Holsters, separate repo)** — storage for quick access to weapons.
 *"Kinda like a favorites list for weapons."*
 
-**Wrist hardpoints (indices 3–5)** — move guns from the **opposing** hand into
-the wrist mounts. Then go **open palm**: the held weapon goes **invisible**, the
-hand drops to the **reach pose**, and the three stored weapons can be fired in
+**Wrist hardpoints** — move guns from the **opposing** hand into the wrist
+mounts. Then go **open palm**: the held weapon goes **invisible**, the hand
+drops to the **reach pose**, and the three stored weapons can be fired in
 place. Net effect the owner is aiming for: *"four weapons in each hand"* — one
 held plus three mounted around it.
 
-**Forearm hardpoints (indices 0–2)** — **utility, not weapons.** Flares, shields,
-usable inventory. *"assign inventory items for quick use."* Bombs are a grey area
-because a bomb is arguably a weapon.
+**HOLSTERS DRAW, WRISTS FIRE** (owner, 2026-08-26). A torso holster puts a gun
+in your hand. A wrist mount fires its weapon **in place**, palm-out, without
+ever drawing it. They are different verbs so they stop competing. Do not add
+drawing behaviour to a wrist mount.
+
+**Forearm hardpoints** — **DEFERRED as a feature, 2026-08-26.** Was going to be
+**utility, not weapons**: flares, shields, usable inventory. *"assign inventory
+items for quick use."* Bombs are a grey area because a bomb is arguably a
+weapon. The menu rows are **removed** so they stop cluttering a menu they
+cannot serve; everything learned about placing the row (the 90-degree yaw
+correction, why pitch had to be forced flat, the rejected main-hand-aim
+experiment, the tuned default offsets) is preserved verbatim in the
+`DEFERRED: THE FOREARM TIER` block on `RS_HardPoints.zs`' constants.
 
 ### What the code does not do yet
 
-- **`contents` is `Array<Weapon>`** (`RS_HardPoints.zs:232`). A forearm mount
-  **cannot hold a flare or a shield.** `Weapon` derives from `Inventory`, so
-  widening to `Array<Inventory>` covers weapons *and* utility items; store/draw
-  then branches on which it got (weapons route through `MoveWeaponToHand` /
-  `PendingWeapon`, other inventory through a use/activate path).
-- **The tier split exists but does not gate content.**
-  `FOREARM_HOLSTER_END = 3` (`:75`) is already used for basis math (`:624`) and
-  the marker feed (`:1145`), but nothing stops a weapon going in a forearm slot
-  or a flare in a wrist slot.
+- **`contents` is `Array<Weapon>`.** A mount **cannot hold a flare or a
+  shield** — which is a large part of why the forearm tier is deferred.
+  `Weapon` derives from `Inventory`, so widening to `Array<Inventory>` covers
+  weapons *and* utility items; store/draw then branches on which it got
+  (weapons route through `MoveWeaponToHand` / `PendingWeapon`, other inventory
+  through a use/activate path).
+- **HAND-BINDING COLLISION between the two verbs.** A mount is FILLED by the
+  opposite hand (a hand cannot reach its own arm — `updateClaims`) but FIRED by
+  the hand that WEARS it (the arming pose is that wrist rolling palm-out). With
+  every weapon carrying `+WEAPON.NOHANDSWITCH`, an instance is permanently
+  bound to one hand, so the weapon a reach naturally puts on a mount is exactly
+  the one `fireGesture`'s wrong-hand guard refuses. **Pre-existing** — it was
+  already true when the main hand filled all six off-arm mounts — and never hit
+  because gesture-cast defaults off with placeholder binds. Written up in full
+  at `fireGesture`'s guard. **Do not delete the guard**; it is what stops a VM
+  abort. The fix is an owner decision between "arm the bank you can reach" and
+  "give mounts a hand-agnostic copy".
 - **Open-palm does not hide the held weapon or change the hand pose.**
   `POSE_REACH` exists (`hand_frames.txt`, `HOLD_BASE + 7`, "splayed, about to
   take hold") and `RS_Hands` already maps `GRIPSUBJ_Holster → POSE_REACH`
@@ -112,6 +130,16 @@ applied to BOTH in the same pass.** Every divergence bug found so far came from 
 fix landing in one sibling and not the other — including the
 `GetActorModelClass` one repaired on this branch.
 
+**ONE DELIBERATE EXCEPTION, 2026-08-26: the dual-arm re-layout below.** It is a
+change to what an *index means* in this fork's anchor table (main-arm bank vs
+off-arm bank), not a defect repair, and the owner scoped it to this repo alone
+— RS_Holsters owns eight torso anchors that have no arm to be laid out on. The
+divergence therefore GREW: `handBasisPose`, `handAnchorPos`, `worldToHand`,
+`updateGrabs`, `updateClaims`' self-claim guard, `holsterActive` and the profile
+key schema now differ structurally between the siblings, on top of the
+`isHandAnchored` inversion. Anyone doing the merge should read this section
+first; the two files are further apart than the 852/4,338 figure above.
+
 ## Open work
 
 34 findings from the 2026-08-25 audit.
@@ -166,38 +194,78 @@ repo's README). Overlapping anchors between the two mods mean one grip press can
 be acted on by both handlers.
 
 **Open headset questions — both now live cvars rather than blocking:**
-- **Wrist pitch.** `handBasisPose` reads `OffhandPitch` **raw** while every other
-  consumer negates it, which would invert the vertical response of wrist anchors
-  3–5. Turn on `rs_hardpoint_wristdump`, tilt, read the numbers. **Not fixed
-  blind** — this file's rotation math has been hand-derived wrongly twice.
-- **Roll is not in the anchor basis.** Built from the off hand's yaw+pitch only,
-  so rolling the arm rotates a stored item without swinging its mount around the
-  arm. Squarely in gesture-cast's path, since the arming pose *is* a roll.
+- **Wrist pitch.** `handBasisPose` reads the wearing hand's pitch **raw** while
+  every other consumer in the family negates it, which would invert the vertical
+  response of every mount. Turn on `rs_hardpoint_wristdump` — it prints **both
+  arms** now — tilt, read the numbers. **Not fixed blind** — this file's
+  rotation math has been hand-derived wrongly twice.
+- **Roll is not in the anchor basis.** Built from the wearing hand's yaw+pitch
+  only, so rolling the arm rotates a stored item without swinging its mount
+  around the arm. Squarely in gesture-cast's path, since the arming pose *is* a
+  roll.
 
-## Dual-arm — specified 2026-08-26, not yet built
+## Dual-arm — BUILT 2026-08-26 (re-spec, then implemented)
 
-Owner wants mounts on **both** forearms. Menu shape, exactly as specified:
+The owner re-specified the layout: **forearm slots disabled and their menu rows
+removed**, **three wrist mounts per arm on BOTH arms**. Net anchor count
+**unchanged at 6** — deliberately, so dual-arm arrives without adding anything
+new to learn. Menu shape, as shipped:
 
 ```
 MAIN HAND                     OFF HAND
-  Forearm slots  on/off         Forearm slots  on/off
-  Forearm slots  1 / 2 / 3      Forearm slots  1 / 2 / 3
   Wrist slots    on/off         Wrist slots    on/off
   Wrist slots    1 / 2 / 3      Wrist slots    1 / 2 / 3
 ```
 
-Eight controls, up to **12 mounts**. This replaces the current single `armMode()`
-(`:1473`). Each arm needs its **own saved layout** — the mounts sit relative to
-whichever controller wears them.
+Built as a **clone of the index block into a second bank**, not by threading a
+hand argument through every function — the one-bank pattern was proven and a
+parameterised version touches far more call sites for equivalent risk.
 
-The old notes scoped this as **cloning the 6-index block into a second bank**
-rather than threading a hand argument through every function, on the grounds that
-the existing one-bank pattern is proven and a parameterised version touches far
-more call sites for equivalent risk. That reasoning still holds.
+### What that means in the code
 
-Note the currently-dead off-hand path (`nearOff` pinned to -1, `:1608`) becomes
-**live** once a main-arm rig exists: mounts on the off arm are reached by the main
-hand, and vice versa. **Do not delete it.**
+- `HOLSTER_COUNT` stays **6**. `OFF_WRIST_START = 3`, `WRIST_PER_ARM = 3`.
+  Indices **0-2 = main arm**, **3-5 = off arm**.
+- `FOREARM_HOLSTER_END` and `FOREARM_YAW_CORRECTION` are **gone as symbols**
+  (a constant whose value stays 3 while its meaning inverts is a trap); their
+  content survives in the `DEFERRED: THE FOREARM TIER` comment block.
+- **The off bank kept indices 3-5** so the three gesture-fire netevents, their
+  KEYCONF aliases and any bind a player already made still mean what they meant.
+- `isMainArmAnchor(idx)` is the one predicate everything branches on.
+  `handOrigin` picks `AttackPos` vs `OffhandPos`; `handBasisPose` picks the
+  matching angle/pitch/roll and now has **no special case in it at all**.
+- `armMode()` is replaced by `wristCount(bool mainArm)` / `wristTierLive(bool)`,
+  reading four new cvars: `rs_hardpoint_wrist_main{,_count}` /
+  `rs_hardpoint_wrist_off{,_count}`. `rs_hardpoint_arm_active_count` is
+  **undeclared** now.
+- **`nearOff` is live.** The self-claim exclusion in `updateClaims` is symmetric
+  now: a hand can only claim the OTHER arm's bank. `updateGrabs` grew back its
+  off-hand hand-anchored branch, which had been structurally unreachable.
+- **Per-arm saved layout.** Profile keys are arm-tagged: `m0_`..`m2_` and
+  `o0_`..`o2_` (`profileKey`), replacing the flat `h0_`..`h5_`. That matters
+  because `loadProfile` falls back **per field** rather than erroring, so a
+  stale `h0_fwd = -4.0` from the forearm era would have silently loaded into
+  MainWristBelow. Old profiles now simply do not match and every field falls
+  back to the new default. One save slot still covers both arms.
+- **Gesture-cast is per arm.** `gestureArmedMain` / `gesturePreviousMain` /
+  `gestureSeatedMain` + `updateGestureArmMain` + `fireGestureMain` mirror the
+  off-hand originals (`AttackRoll`, `PSP_WEAPON`, `ReadyWeapon`, hand 0, haptic
+  channel 0). Three new netevents
+  `rs-hardpoint-gesture-main-{grip,padx,trigger}` map to mounts 0/1/2.
+  `updateClaims` now ORs the armed flag into **both** claim fields, and the
+  main-hand edge test was switched to the same value it writes (it had been
+  reading the un-ORed one).
+
+### Still open on the dual-arm work
+
+- The **hand-binding collision** above. It is the one thing that can make
+  gesture-fire refuse every mount, and it needs an owner decision.
+- **hsSide is mirrored between the banks as a guess** — with both hands
+  pointing the same way, identical `hsSide` would stack both banks on the same
+  side of the body rather than putting each on its arm's outer side. Which side
+  is "outer" is not measured. Edit mode settles it.
+- **The gesture roll target/tolerance are shared by both hands**, which assumes
+  the two controllers report roll in the same frame. `rs_hardpoint_wristdump`
+  now prints both arms specifically so that can be read rather than guessed.
 
 ## Where the audit lives
 
