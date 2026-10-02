@@ -424,6 +424,17 @@ class RS_HardPointManager : EventHandler
 	bool gestureArmed[MAXPLAYERS];      // OFF arm, mounts 3-5
 	bool gestureArmedMain[MAXPLAYERS];  // MAIN arm, mounts 0-2
 
+	// "Has this armed stretch already taken its backup?", as its own flag
+	// rather than read off gesturePrevious*[i] being non-null. A null test
+	// cannot tell "not captured yet" from "captured an EMPTY hand": with the
+	// hand empty the first fire stores null, so the second fire believes it
+	// still has to capture and stores the FIRST mount's gun as the player's
+	// real weapon. Disarming then moves that mount gun into the hand with its
+	// stow flags back on -- unable to fire -- and the next reconciliation pass
+	// empties the mount it came from.
+	bool gestureCapturedOff[MAXPLAYERS];
+	bool gestureCapturedMain[MAXPLAYERS];
+
 	// What the off hand held BEFORE the first gesture-fire of this armed
 	// stretch, null when nothing is currently gesture-seated. Captured once
 	// on the first fire after arming, not on every fire -- so firing HP1
@@ -787,6 +798,12 @@ class RS_HardPointManager : EventHandler
 		ensureGestureSeatedMain();
 		gestureSeatedOff[i] = null;
 		gestureSeatedMain[i] = null;
+
+		// The capture flags die with the pawn for the same reason the backup
+		// pointers below do: left true, the next armed stretch's first fire
+		// would skip capturing the living player's weapon entirely.
+		gestureCapturedOff[i] = false;
+		gestureCapturedMain[i] = false;
 
 		// And the backup pointers. Clearing the armed flags above means the
 		// falling edge in updateGestureArm/updateGestureArmMain can never fire
@@ -2364,6 +2381,20 @@ class RS_HardPointManager : EventHandler
 				}
 			}
 			gestureSeatedOff[i] = null;
+			gestureCapturedOff[i] = false;
+
+			// Unhide the layer, and OUTSIDE the restore branch above on purpose.
+			// NoDraw lives on the DPSprite, not on the weapon, and the engine keeps
+			// ONE DPSprite per layer across a weapon change -- GetPSprite swaps the
+			// caller and resets Flags, never NoDraw -- so the hide fireGesture set
+			// rides this layer onto whatever is in the hand now and leaves it
+			// invisible. That includes the case where there was nothing to restore
+			// and the mount's own gun simply stayed in the hand. Masked today only
+			// because RS_WorldHands rewrites NoDraw every tic; that cover goes when
+			// its hand code does.
+			let psp = pawn.player.GetPSprite(PSP_OFFHANDWEAPON);
+			if (psp != null)
+				psp.NoDraw = false;
 		}
 	}
 
@@ -2448,6 +2479,13 @@ class RS_HardPointManager : EventHandler
 				}
 			}
 			gestureSeatedMain[i] = null;
+			gestureCapturedMain[i] = false;
+
+			// Unhide the layer, outside the restore branch -- see updateGestureArm
+			// for why the clear cannot live inside it.
+			let psp = pawn.player.GetPSprite(PSP_WEAPON);
+			if (psp != null)
+				psp.NoDraw = false;
 		}
 	}
 
@@ -2785,8 +2823,15 @@ class RS_HardPointManager : EventHandler
 		// armed stretch -- see gesturePreviousOff's field comment. A second
 		// or third hardpoint fired before disarming must not overwrite this
 		// with whatever the FIRST hardpoint's weapon left seated.
-		if (gesturePreviousOff[i] == null)
+		//
+		// A FLAG, not a null test: an empty off hand captures null, and a null
+		// capture still has to count as done -- see gestureCapturedOff's own
+		// comment for what the null test did on the second fire.
+		if (!gestureCapturedOff[i])
+		{
+			gestureCapturedOff[i] = true;
 			gesturePreviousOff[i] = pawn.player.OffhandWeapon;
+		}
 
 		// MULTI-FIRE housekeeping: HP1 then HP2 in one armed stretch leaves
 		// HP1's weapon back on its own mount with its stow flags stripped
@@ -2813,6 +2858,31 @@ class RS_HardPointManager : EventHandler
 		w.bHolsterHidden = false;
 
 		moveWeaponInstant(pawn, w, 1);
+
+		// THE SEAT CHECK. SetPsprite is not told which weapon the state belongs
+		// to: the engine takes the layer's caller from whatever OffhandWeapon is
+		// at this instant (player_t::GetPSprite) and DPSprite::SetState then
+		// invokes the state's action functions with THAT caller. So if the seat
+		// above did not land, w's Fire state runs against a different weapon and
+		// the VM kills the game on the first action function that type-checks its
+		// owner -- the abort the hand-binding note above describes.
+		//
+		// The seat only lands inside that call when the instant switch is on:
+		// MoveWeaponToHand merely STARTS the lower otherwise, and it is
+		// CF_INSTANTWEAPSWITCH that makes A_Lower fall straight through to
+		// BringUpWeapon in the same call. rs_hardpoint_instant_switch is a menu
+		// option, so "off" is a setting a player can reach, not a hypothetical,
+		// and refusing to fire is the right answer there.
+		//
+		// gestureSeatedOff[i] deliberately keeps pointing at w: the switch may
+		// still complete a few tics from now, and the falling edge has to be able
+		// to put its stow flags back.
+		if (pawn.player.OffhandWeapon != w)
+		{
+			Console.Printf("\cgRS_HARDPOINT: %s never reached the off hand -- refusing to run its Fire state (instant switch off?)", w.GetClassName());
+			return;
+		}
+
 		pawn.player.SetPsprite(PSP_OFFHANDWEAPON, fireState);
 
 		// No hardpoint weapon model drawn. Stays hidden for as long as it
@@ -2907,8 +2977,13 @@ class RS_HardPointManager : EventHandler
 
 		// FIRST fire of this armed stretch only -- see gesturePreviousOff's
 		// field comment for why a second or third fire must not overwrite it.
-		if (gesturePreviousMain[i] == null)
+		//
+		// A flag, not a null test -- see fireGesture's twin and the field comment.
+		if (!gestureCapturedMain[i])
+		{
+			gestureCapturedMain[i] = true;
 			gesturePreviousMain[i] = pawn.player.ReadyWeapon;
+		}
 
 		// MULTI-FIRE housekeeping, same as fireGesture: the previously seated
 		// mount weapon is back on its own mount with its stow flags stripped,
@@ -2928,6 +3003,17 @@ class RS_HardPointManager : EventHandler
 		w.bHolsterHidden = false;
 
 		moveWeaponInstant(pawn, w, 0);
+
+		// The seat check, mirrored -- read fireGesture's copy for why it exists.
+		// Short version: SetPsprite takes the layer's caller from ReadyWeapon as
+		// it stands right now, and running w's Fire state against a different
+		// weapon is a VM abort, not a glitch.
+		if (pawn.player.ReadyWeapon != w)
+		{
+			Console.Printf("\cgRS_HARDPOINT: %s never reached the main hand -- refusing to run its Fire state (instant switch off?)", w.GetClassName());
+			return;
+		}
+
 		pawn.player.SetPsprite(PSP_WEAPON, fireState);
 
 		// No hardpoint weapon model drawn. Stays hidden for as long as it
@@ -2968,16 +3054,35 @@ class RS_HardPointManager : EventHandler
 	// cheated-run flag that this would trip.
 	private void moveWeaponInstant(PlayerPawn pawn, Weapon w, int hand)
 	{
+		// exactInstance TRUE on both calls. MoveWeaponToHand's default is
+		// WeaponsMatch, a CLASS test, and everything this file does is about one
+		// specific instance parked on one specific mount. Under the class test a
+		// same-class gun in the OTHER hand sends the engine down its
+		// SwitchWeaponHand branch and moves THAT gun instead, and a same-class
+		// gun already in the TARGET hand makes it return having seated nothing.
+		// Both are silent, and the caller then runs a Fire state on a weapon this
+		// function never touched.
 		if (!instantSwitchEnabled())
 		{
-			pawn.MoveWeaponToHand(w, hand);
-			return;
+			pawn.MoveWeaponToHand(w, hand, true);
 		}
-		bool wasSet = (pawn.player.cheats & CF_INSTANTWEAPSWITCH) != 0;
-		pawn.player.cheats |= CF_INSTANTWEAPSWITCH;
-		pawn.MoveWeaponToHand(w, hand);
-		if (!wasSet)
-			pawn.player.cheats &= ~CF_INSTANTWEAPSWITCH;
+		else
+		{
+			bool wasSet = (pawn.player.cheats & CF_INSTANTWEAPSWITCH) != 0;
+			pawn.player.cheats |= CF_INSTANTWEAPSWITCH;
+			pawn.MoveWeaponToHand(w, hand, true);
+			if (!wasSet)
+				pawn.player.cheats &= ~CF_INSTANTWEAPSWITCH;
+		}
+
+		// NoDraw is sticky and nothing else ever clears it, so clear it at the
+		// one choke point every seat in this file goes through: a weapon that has
+		// just arrived in a hand must be drawable, whoever hid the layer last.
+		// fireGesture re-hides its own psprite immediately after this returns,
+		// which still wins because it runs later.
+		let psp = pawn.player.GetPSprite(hand == 1 ? PSP_OFFHANDWEAPON : PSP_WEAPON);
+		if (psp != null)
+			psp.NoDraw = false;
 	}
 
 	// Swap what the hand is holding with what the holster holds. Because an
