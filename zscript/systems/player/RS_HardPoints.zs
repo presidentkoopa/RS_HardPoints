@@ -698,6 +698,12 @@ class RS_HardPointManager : EventHandler
 	{
 		for (int i = 0; i < MAXPLAYERS; ++i)
 		{
+			// WRITE THE LEDGER FIRST (B4). releasePlayer below empties contents[] and
+			// unflags every weapon -- which is correct and must not change -- so this is
+			// the last moment the mapping from mount to weapon exists at all. Writing it
+			// after would record six empty slots.
+			writeLedger(i);
+
 			releasePlayer(i, true);
 			despawnPlayerActors(i);
 		}
@@ -725,6 +731,12 @@ class RS_HardPointManager : EventHandler
 			if (!playeringame[i] || players[i].mo == null)
 				continue;
 			unstowInventory(players[i].mo);
+
+			// AND PUT BACK WHAT WAS ON THE MOUNTS (B4). Strictly after the sweep above:
+			// that clears every stowed flag, so this starts from a known-empty state and
+			// re-stows only what the ledger names. A weapon the player no longer owns
+			// simply leaves its mount empty.
+			readLedger(i);
 		}
 
 		// And the tuned layout, which until now had to be loaded by hand
@@ -3543,5 +3555,123 @@ class RS_HardPointManager : EventHandler
 		int want = MAXPLAYERS * HOLSTER_COUNT;
 		while (contents.Size() < want)
 			contents.Push(null);
+	}
+
+	// ---- THE LOADOUT SURVIVES A MAP CHANGE (B4) --------------------------
+	//
+	// This handler is PER LEVEL. contents[] is built during play and ceases to exist with
+	// the handler, and WorldUnloaded deliberately empties every slot and unflags every
+	// weapon before that happens -- correctly, because leaving bHolsterHidden set on a
+	// weapon whose "is stowed" table is gone bricks it permanently. So the mounts emptied
+	// themselves on every door, and you walked into the next map carrying everything.
+	//
+	// WHY A CLASS NAME, WHEN THIS FILE REFUSES CLASS NAMES EVERYWHERE ELSE. The comment on
+	// contents[] is emphatic that matching by class is wrong, and it is: within a level, the
+	// OTHER hand's identical-class weapon looks like the stored one drifting back and wipes
+	// a slot that still legitimately holds a different instance.
+	//
+	// That reasoning does not reach across a map change, because THE INSTANCES DO NOT
+	// SURVIVE ONE. The player's inventory is rebuilt; a pointer stored anywhere would come
+	// back null. A class name is the only thing that can cross, so the rule is narrowed
+	// rather than broken: the ledger is written at WorldUnloaded, read once at WorldLoaded,
+	// and NEVER consulted during play. At the moment it is read, contents[] is empty for
+	// every player and nothing on this map claims any weapon is stowed, so the ambiguity the
+	// contents[] comment warns about cannot arise -- and each instance is claimed at most
+	// once per pass, so two of the same gun fill two slots rather than one twice.
+	//
+	// Stored as one comma-separated string rather than an Array<String> for the oldest
+	// reason there is: it is one field to serialize and one thing to go wrong.
+	private void writeLedger(int i)
+	{
+		if (i < 0 || i >= MAXPLAYERS || !playeringame[i]) return;
+		let pawn = players[i].mo;
+		if (pawn == null) return;
+
+		ensureContents();
+		String s = "";
+		bool any = false;
+		for (int h = 0; h < HOLSTER_COUNT; ++h)
+		{
+			let w = contents[(i * HOLSTER_COUNT) + h];
+			if (h > 0) s = s .. ",";
+			if (w != null) { s = s .. w.GetClassName(); any = true; }
+		}
+
+		let tok = RS_HardPointLedger(pawn.FindInventory("RS_HardPointLedger"));
+		if (tok == null)
+		{
+			// Nothing was stowed and there is no token: do not create one just to say so.
+			if (!any) return;
+			tok = RS_HardPointLedger(Actor.Spawn("RS_HardPointLedger", pawn.pos));
+			if (tok == null) return;
+			tok.AttachToOwner(pawn);
+		}
+		tok.slots = s;
+	}
+
+	// The other half, on a genuinely fresh level. Runs AFTER unstowInventory has cleared
+	// every stowed flag, so this starts from a known-empty state and puts back only what the
+	// ledger names.
+	private void readLedger(int i)
+	{
+		if (i < 0 || i >= MAXPLAYERS || !playeringame[i]) return;
+		let pawn = players[i].mo;
+		if (pawn == null) return;
+
+		let tok = RS_HardPointLedger(pawn.FindInventory("RS_HardPointLedger"));
+		if (tok == null || tok.slots.Length() == 0) return;
+
+		Array<String> want;
+		tok.slots.Split(want, ",");
+
+		ensureContents();
+		Array<Weapon> claimed;   // an instance may fill at most one slot
+
+		for (int h = 0; h < HOLSTER_COUNT && h < want.Size(); ++h)
+		{
+			if (want[h].Length() == 0) continue;
+			if (!holsterActive(h)) continue;
+
+			Name wantCls = want[h];
+			Weapon found = null;
+			for (Inventory item = pawn.Inv; item != null; item = item.Inv)
+			{
+				let w = Weapon(item);
+				if (w == null || w.GetClassName() != wantCls) continue;
+				bool taken = false;
+				for (int k = 0; k < claimed.Size(); ++k)
+					if (claimed[k] == w) { taken = true; break; }
+				if (taken) continue;
+				found = w;
+				break;
+			}
+			if (found == null) continue;   // no longer owned: the slot stays empty
+
+			claimed.Push(found);
+			contents[(i * HOLSTER_COUNT) + h] = found;
+			found.bNoAutoSwitchTo = true;
+			found.bHolsterHidden  = true;
+		}
+	}
+}
+
+// THE LEDGER ITSELF. An Inventory because inventory is the one thing that crosses a map
+// change with the player; everything this mod otherwise owns is per-level.
+//
+// Undroppable and uninteractive: it is bookkeeping, it must never appear in a pickup
+// message, and a player must not be able to lose their loadout by dropping something.
+class RS_HardPointLedger : Inventory
+{
+	// "ClassA,,ClassB,,," -- one field per holster, empty where that mount is empty.
+	// Serialized with the token, which is what makes the whole thing work.
+	String slots;
+
+	Default
+	{
+		Inventory.MaxAmount 1;
+		+INVENTORY.UNDROPPABLE
+		+INVENTORY.UNTOSSABLE
+		+INVENTORY.QUIET
+		-INVENTORY.INVBAR
 	}
 }
